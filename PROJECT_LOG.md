@@ -91,6 +91,32 @@ be competitive.
 
 ---
 
+### 2026-10-20 — Pfam accessions verified for the domain filter
+
+Checked each accession against the InterPro API rather than trusting the
+values written into the config:
+
+| Accession | Short name | Full name |
+| --- | --- | --- |
+| PF18541 | RuvC_III | RuvC endonuclease subdomain 3 |
+| PF01844 | HNH | HNH endonuclease |
+| PF13395 | HNH_4 | HNH endonuclease |
+| PF16595 | Cas9_PI | PAM-interacting domain of Cas9 |
+
+Changed `domains.hmm_profiles` from one accession per domain to a list of
+alternatives, satisfied when any profile hits. Cas9's RuvC is split into three
+discontiguous subdomains that Pfam models separately, so pinning the single
+subdomain-3 model would reject orthologs matched by a different subdomain
+model. HNH gets both PF01844 and PF13395 for the same reason.
+
+PF16595 is recorded under `informational_profiles`: it is not required for a
+sequence to be kept, but the evaluation stage's PAM-interacting domain check
+needs it.
+
+Still to do before this stage can run: HMMER is not installed on this machine
+(nor are DIAMOND or MMseqs2), and the Pfam release version must be recorded
+here once the profiles are actually fetched.
+
 ## Decisions
 
 | Date | Decision | Reason |
