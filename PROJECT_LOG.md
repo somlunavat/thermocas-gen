@@ -259,6 +259,62 @@ Thermophilic clusters are scarce, and allocating clusters uniformly at random
 would let train absorb all of them by chance, leaving no thermophiles in val or
 test to evaluate against.
 
+### 2026-10-20 — Gate 1 pre-flight: the thermophilic Cas9 corpus is 10 clusters
+
+Before committing to a multi-gigabyte reference download and a cloud search,
+estimated the thermophilic corpus from small UniProt queries
+(`scripts/07_census_feasibility.py`). The answer changes the project.
+
+**Census.** UniProtKB holds 1,479 Cas9 proteins at 950-1,700 aa. Joined to
+Gosha, 1,046 (70.7%) carry an OGT label:
+
+| Bin | Sequences | Cross-checked | Distinct organisms |
+| --- | --- | --- | --- |
+| meso | 1,023 | 785 | 968 |
+| thermo | 23 | 16 | 21 |
+
+**The decisive number.** Clustering those 23 thermophilic sequences at the
+configured 45% identity / 80% coverage gives **10 clusters**, six of them
+singletons. Cluster-level splitting at 80/10/10 would leave roughly 8 training
+clusters, 1 val, 1 test. That is not a trainable conditioning signal, and
+`min_per_bin: 200` is out of reach by more than an order of magnitude.
+
+Sequence counts were misleading, as expected: the count that bounds both
+learning and splitting is the cluster count.
+
+**This is biology, not database coverage.** Checked whether a bigger database
+fixes it. NCBI nr holds 48,959 Cas9 proteins, ~33x UniProtKB, so the corpus as
+a whole would grow substantially. But the thermophilic end does not:
+
+| Taxon | Cas9 proteins in nr (950-1,700 aa) |
+| --- | --- |
+| all | 48,959 |
+| Bacteria | 34,888 |
+| Archaea | **21** |
+| *Geobacillus* | 90 |
+| *Thermus* | **0** |
+| *Thermotoga* | **0** |
+
+Type II CRISPR-Cas9 is rare in thermophiles and nearly absent from archaea,
+where most hyperthermophiles live. The classic thermophile genera have no Cas9
+at all. Consistent with this, the hottest host of any Cas9 in the census is
+60 °C — there is no hyperthermophilic Cas9 to find, which retrospectively
+justifies merging the hyper bin but shows the problem runs deeper than
+granularity.
+
+Searching nr instead of UniProtKB is still worth doing for the mesophilic side
+and would raise the thermophilic cluster count somewhat, but it cannot
+manufacture diversity that does not exist.
+
+**The fallback's premise checks out.** Gosha holds 1,081 thermophilic species
+(672 cross-checked), of which 479 are at >=60 °C and 238 at >=70 °C. At a few
+thousand proteins per proteome that is on the order of 2M thermophilic protein
+sequences available for a broad temperature-labeled pre-training stage. The
+scarcity is specific to Cas9, not to thermophilic proteins.
+
+**Status: Gate 1 fails as configured.** Not changing the config or the
+framing without a decision; options put to the user.
+
 ## Decisions
 
 | Date | Decision | Reason |
