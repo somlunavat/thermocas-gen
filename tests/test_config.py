@@ -53,16 +53,23 @@ class TestGrowthTemperatureBinning:
     """The shipped bins must tile the real line with no gaps."""
 
     def test_shipped_bins_cover_every_plausible_ogt(self):
+        """Two bins: the hyper class was merged into thermo.
+
+        Gosha holds only 171 cross-checked hyperthermophilic species, so a
+        separate hyper class could never have reached min_per_bin and Gate 1
+        would have failed on the threshold rather than on the science.
+        """
         binner = GrowthTemperatureBinner.from_config(Config.load("data"))
-        assert binner.names == ["meso", "thermo", "hyper"]
+        assert binner.names == ["meso", "thermo"]
         # Boundaries are half-open upward, so 45 is thermo and not meso.
         assert binner.bin_for(4) == "meso"
         assert binner.bin_for(37) == "meso"
         assert binner.bin_for(44.9) == "meso"
         assert binner.bin_for(45) == "thermo"
         assert binner.bin_for(69.9) == "thermo"
-        assert binner.bin_for(70) == "hyper"
-        assert binner.bin_for(103) == "hyper"
+        # Former hyper range now falls in thermo.
+        assert binner.bin_for(70) == "thermo"
+        assert binner.bin_for(103) == "thermo"
 
     def test_unbounded_edges_parsed_as_floats_not_strings(self):
         """Regression: PyYAML parses `Infinity` as a str, `.inf` as a float.

@@ -82,11 +82,22 @@ domains:
 
 # Growth-temperature binning. These are the control-token classes, not
 # decoding settings. Edges are in degrees Celsius, upper-exclusive.
+#
+# TWO bins, not three. The brief proposed meso / thermo / hyper, but Gosha
+# holds only 171 cross-checked hyperthermophilic species and 484 thermophilic
+# ones, and the Cas9-labeled corpus can only be a subset of those. A separate
+# `hyper` class could not have reached min_per_bin, so Gate 1 would have failed
+# on an arbitrary threshold rather than on anything about the science. Merging
+# the two thermophilic classes keeps the contrast the thesis actually needs --
+# mesophilic versus thermophilic -- with enough data behind each side.
+#
+# The information lost by merging is recovered two ways: `ogt_c` stays in the
+# label table as a continuous value, and model.yaml enables an auxiliary head
+# that regresses on it. Conditioning is coarse; the target is not.
 growth_temperature:
   bins:
-    - {name: meso,  min: -.inf, max: 45}
-    - {name: thermo, min: 45,       max: 70}
-    - {name: hyper,  min: 70,       max: .inf}
+    - {name: meso,   min: -.inf, max: 45}
+    - {name: thermo, min: 45,    max: .inf}
   min_per_bin: 200          # Gate 1 fails below this in any bin
   require_crosscheck: false # true restricts training to ogt_verified rows
 

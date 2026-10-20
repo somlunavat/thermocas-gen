@@ -15,8 +15,12 @@ conditioned_lm:
   # unconditional token, enabling classifier-free-guidance-style strengthening
   # at generation time.
   growth_temp_token_dropout: 0.10
-  # Auxiliary regression head predicting OGT from the pooled representation.
-  # Doubles as an in-model scorer; weighted into the loss by train.yaml.
+  # Auxiliary regression head predicting OGT in degrees Celsius from the
+  # pooled representation. Two jobs: it doubles as an in-model scorer, and it
+  # carries the resolution lost when the hyper bin was merged into thermo.
+  # Conditioning is a two-way token; the regression target is continuous, so
+  # a 95 C host and a 50 C host remain distinguishable to the model. Keep this
+  # enabled while the bins stay coarse.
   ogt_head:
     enabled: true
     hidden: 256

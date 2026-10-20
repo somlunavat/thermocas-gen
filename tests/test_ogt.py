@@ -254,7 +254,7 @@ class TestAgainstRealGosha:
         binner = GrowthTemperatureBinner.from_config(Config.load("data"))
         assert binner.bin_for(table.lookup("Geobacillus stearothermophilus").ogt_c) == "thermo"
         assert binner.bin_for(table.lookup("Geobacillus thermodenitrificans").ogt_c) == "thermo"
-        assert binner.bin_for(table.lookup("Pyrococcus furiosus").ogt_c) == "hyper"
+        assert binner.bin_for(table.lookup("Pyrococcus furiosus").ogt_c) == "thermo"
         assert binner.bin_for(table.lookup("Streptococcus pyogenes").ogt_c) == "meso"
 
     def test_genuine_hyperthermophiles_survive_the_crosscheck(self, table):
@@ -282,8 +282,9 @@ class TestAgainstRealGosha:
             name = binner.bin_for(rec.ogt_c)
             counts[name] = counts.get(name, 0) + 1
         assert counts["meso"] > 20000
-        assert counts["thermo"] < 1500
-        assert counts["hyper"] < 500
+        # Even merged, the thermophilic side is ~4% of species, and the Cas9
+        # corpus can only be a subset of it.
+        assert counts["thermo"] < 2000
 
 
 class TestParseOrganismFromHeader:
