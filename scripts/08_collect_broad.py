@@ -71,8 +71,21 @@ class SpeciesPlan:
     n_sources: int
 
 
-def fetch_species_fasta(organism: str, limit: int, timeout: int = 120) -> str:
-    """Download up to ``limit`` proteins for one organism."""
+def fetch_species_fasta(
+    organism: str, limit: int, timeout: int = 120, attempts: int = 4
+) -> str:
+    """Download up to ``limit`` proteins for one organism, with retries.
+
+    Retries matter here rather than being defensive boilerplate: a full run
+    makes 800 requests, so a transient timeout or 5xx is close to certain.
+    An early version caught only HTTPError and URLError and died 74 species in
+    on a bare TimeoutError, which urlopen raises directly and which is not a
+    URLError subclass. Catching OSError covers timeouts, resets and DNS
+    failures alike.
+
+    A 4xx other than 429 is not retried: it means the query is wrong, and
+    repeating it would just be slower.
+    """
     params = {
         "query": f'organism_name:"{organism}"',
         "format": "fasta",
@@ -80,13 +93,33 @@ def fetch_species_fasta(organism: str, limit: int, timeout: int = 120) -> str:
     }
     url = f"{SEARCH}?{urllib.parse.urlencode(params)}"
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    try:
-        with urllib.request.urlopen(request, timeout=timeout, context=ssl_context()) as response:
-            return response.read().decode()
-    except urllib.error.HTTPError as exc:
-        raise RuntimeError(f"HTTP {exc.code}") from exc
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"unreachable ({exc.reason})") from exc
+
+    last_error = "unknown"
+    for attempt in range(1, attempts + 1):
+        try:
+            with urllib.request.urlopen(
+                request, timeout=timeout, context=ssl_context()
+            ) as response:
+                return response.read().decode()
+        except urllib.error.HTTPError as exc:
+            last_error = f"HTTP {exc.code}"
+            retry_after = exc.headers.get("Retry-After") if exc.headers else None
+            if exc.code == 429 or exc.code >= 500:
+                delay = float(retry_after) if retry_after and retry_after.isdigit() else 2.0 * attempt
+            else:
+                raise RuntimeError(last_error) from exc
+        except urllib.error.URLError as exc:
+            last_error = f"unreachable ({exc.reason})"
+            delay = 2.0 * attempt
+        except OSError as exc:
+            # TimeoutError, ConnectionReset and friends arrive here.
+            last_error = f"{type(exc).__name__}: {exc}"
+            delay = 2.0 * attempt
+
+        if attempt < attempts:
+            time.sleep(delay)
+
+    raise RuntimeError(f"{last_error} after {attempts} attempts")
 
 
 def main() -> int:
@@ -182,6 +215,7 @@ def main() -> int:
     # Download, sharded per species so the run is resumable.
     args.shard_dir.mkdir(parents=True, exist_ok=True)
     fetched = skipped = failed = 0
+    failures: list[str] = []
     for index, plan in enumerate(plans, start=1):
         shard = args.shard_dir / f"{plan.organism_key.replace(' ', '_').replace('/', '_')}.fasta"
         if shard.is_file() and shard.stat().st_size > 0:
@@ -189,9 +223,13 @@ def main() -> int:
             continue
         try:
             text = fetch_species_fasta(plan.organism, cap)
-        except RuntimeError as exc:
+        except Exception as exc:  # noqa: BLE001
+            # One unreachable species must not end a run of 800. Failures are
+            # counted and named; the run is resumable, so a later pass picks
+            # up whatever is still missing.
             print(f"  [{index}/{len(plans)}] {plan.organism}: FAILED {exc}", file=sys.stderr)
             failed += 1
+            failures.append(plan.organism)
             continue
         shard.write_text(text)
         fetched += 1
@@ -200,6 +238,9 @@ def main() -> int:
         time.sleep(args.sleep)
 
     print(f"\ndownloaded {fetched} species ({skipped} already cached, {failed} failed)")
+    if failures:
+        print(f"  failed: {', '.join(failures[:10])}" + (" ..." if len(failures) > 10 else ""))
+        print("  re-run to retry only the missing species (shards are cached)")
 
     # Assemble, filter and screen.
     seq_filter = SequenceFilter(
