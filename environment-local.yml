@@ -1,0 +1,27 @@
+# Local development on Apple Silicon (arm64). Data work, tiny model smoke
+# tests, plots and writing only -- not real training or full-length folding.
+#
+# Install with miniforge so the env is native arm64:
+#   conda env create -f environment-local.yml
+#   conda activate thermocas
+#   export PYTORCH_ENABLE_MPS_FALLBACK=1
+name: thermocas
+channels: [conda-forge, bioconda]
+dependencies:
+  - python=3.11
+  - pytorch
+  - lightning
+  - biopython
+  - pandas
+  - numpy
+  - scikit-learn
+  - matplotlib
+  - pyyaml
+  - pytest
+  # Bioinformatics tools. If any of these lacks an osx-arm64 build, that
+  # pipeline stage moves to a cloud machine; note it in PROJECT_LOG.md rather
+  # than falling back to osx-64 under emulation.
+  - mmseqs2
+  - diamond
+  - hmmer
+  - pip

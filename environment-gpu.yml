@@ -1,0 +1,27 @@
+# Cloud GPU environment for training, generation and folding.
+# Install the CUDA build of PyTorch for the host's driver version; pytorch-cuda
+# below targets CUDA 12.1.
+name: thermocas-gpu
+channels: [pytorch, nvidia, conda-forge, bioconda]
+dependencies:
+  - python=3.11
+  - pytorch
+  - pytorch-cuda=12.1
+  - lightning
+  - biopython
+  - pandas
+  - numpy
+  - scikit-learn
+  - matplotlib
+  - pyyaml
+  - pytest
+  - mmseqs2
+  - diamond
+  - hmmer
+  - pip
+  - pip:
+    - transformers
+    - peft
+    - accelerate
+    - wandb
+    - sentencepiece

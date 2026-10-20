@@ -46,9 +46,9 @@ domains:
 # decoding settings. Edges are in degrees Celsius, upper-exclusive.
 growth_temperature:
   bins:
-    - {name: meso,  min: -Infinity, max: 45}
+    - {name: meso,  min: -.inf, max: 45}
     - {name: thermo, min: 45,       max: 70}
-    - {name: hyper,  min: 70,       max: Infinity}
+    - {name: hyper,  min: 70,       max: .inf}
   min_per_bin: 200          # Gate 1 fails below this in any bin
   require_crosscheck: false # true restricts training to ogt_verified rows
   crosscheck_sample_size: 200

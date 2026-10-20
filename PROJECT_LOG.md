@@ -120,7 +120,10 @@ be competitive.
 
 | Date | Tool | Version |
 | --- | --- | --- |
-| | | |
+| 2026-10-19 | python (ad-hoc, pre-conda) | 3.14.3 |
+| 2026-10-19 | pytorch | 2.12.0 |
+| 2026-10-19 | pyyaml | 6.0.3 |
+| 2026-10-19 | mps backend | available, fp32 only |
 
 ## Seeds
 
