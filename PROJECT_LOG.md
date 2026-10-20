@@ -222,6 +222,43 @@ in `thermo` with agreement 0.944 and 1.000. *Streptococcus thermophilus* lands
 in `meso` at 37 °C, which is correct biology and a reminder that organism names
 are not labels.
 
+### 2026-10-20 — Cluster-level splitting and the leakage gate, verified
+
+Implemented stages 1e and 1f and tested them with real MMseqs2 against the
+eight seeds. The small corpus produced a clean demonstration of why
+cluster-level splitting is not optional.
+
+**Clustering put GeoCas9 and ThermoCas9 in the same cluster.** Both are
+*Geobacillus* type II-C Cas9s and they align at 86.9% identity over 100%
+coverage. Cluster-level splitting therefore sent both to test. Had the split
+been per-sequence, one could have landed in train, and since the two are
+near-identical the thermophilic positive control would have been leaked into
+training — which would make "generated sequences shift toward thermophilic
+features" partly a measurement of recall. SpCas9 and St1Cas9 likewise cluster
+together and both went to train.
+
+8 seeds clustered to 6 clusters at 45% identity / 80% coverage. The II-C
+subfamily holdout forced 3 clusters to test and the positive-control rule
+forced 1.
+
+**The leakage gate was verified in both directions.** On the real split it
+passes, and the closest held-out-to-train pair is 39.7% identity over 3%
+coverage — a conserved catalytic motif, correctly not a violation, which is
+why the check requires high identity *and* high coverage rather than identity
+alone. Then a deliberately leaked split was constructed with GeoCas9 in train
+and ThermoCas9 in test; the gate reported the pair at 86.9% identity / 100%
+coverage and exited 3. A gate that has only ever passed has not been tested.
+
+Design note: the clustering and the leakage check are deliberately independent.
+Clustering at 45% identity should make a cross-split violation impossible, so
+the gate is verification rather than mechanism, and a mistake in the
+clustering parameters cannot also switch off its own check.
+
+The splitter stratifies cluster allocation by dominant growth-temperature bin.
+Thermophilic clusters are scarce, and allocating clusters uniformly at random
+would let train absorb all of them by chance, leaving no thermophiles in val or
+test to evaluate against.
+
 ## Decisions
 
 | Date | Decision | Reason |
@@ -231,6 +268,8 @@ are not labels.
 | 2026-10-19 | Keep the from-scratch transformer as a labeled weak baseline only | Honest comparison point; not expected to be competitive |
 | 2026-10-19 | Growth-temperature bins: meso < 45 °C, thermo 45–70 °C, hyper > 70 °C | Brief's defaults; set in `configs/data.yaml` and overridable |
 | 2026-10-19 | Hold GeoCas9 and ThermoCas9 out of training as positive controls | Default pending review: a thermophilic Cas9 in the training set would make "shifted toward thermophilic" partly memorization. Flip `holdout_positive_controls` in `configs/data.yaml` to change |
+| 2026-10-20 | Merge thermo and hyper into one thermophilic bin; keep continuous ogt_c and the auxiliary regression head | Gosha holds only 171 cross-checked hyperthermophilic species, so a separate bin could not reach min_per_bin and Gate 1 would have failed on a threshold rather than on the science |
+| 2026-10-20 | Keep clustering and the leakage check independent | Clustering is the mechanism, the gate is the verification; a clustering mistake must not be able to disable its own check |
 | 2026-10-20 | Cross-check OGT within Gosha, on bin agreement rather than absolute spread | The per-collection columns are independent sources, so no second database is needed; spread scales with temperature, so a fixed tolerance rejects genuine thermophiles |
 | 2026-10-20 | Bound OGT to [-20, 130] °C | Gosha contains single-source values of 230 °C and 187 °C for known mesophiles |
 | 2026-10-19 | Homolog search runs on a cloud machine, not locally | 16 GB unified memory measured on this Mac; a UniRef50 DIAMOND index does not fit comfortably alongside the OS. Local runs use a subset for smoke-testing only |
