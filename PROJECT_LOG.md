@@ -397,6 +397,51 @@ LoRA with bf16 and gradient checkpointing should fit a 16 GB cloud GPU at
 batch 1, but that is unmeasured and should be smoke-tested before planning a
 real training schedule.
 
+### 2026-10-20 — Stage A collection, model layer, Gate 2, smoke test
+
+**Compute question resolved.** The move from ProGen2-small (151M) to
+ProGen2-base (765M) raised a budget concern. With LoRA it is not a problem:
+estimated 1.5 GB with bf16 and gradient checkpointing, 2.0 GB with bf16 alone,
+and 3.9 GB even in fp32, because LoRA leaves optimizer state covering well
+under 1% of parameters. Caveat recorded in the script output: the estimate
+counts hidden states and not attention matrices, which are
+batch x heads x seq^2 and would add roughly 2.5 GB across 27 layers at 1,703
+tokens if a backend materialized them. Flash/SDPA attention avoids that;
+verify on the actual GPU before trusting the figures.
+
+**Training path verified end to end** on this laptop with a small
+randomly-initialized model at full Cas9 sequence length: 1,353 tokens on
+`mps`, finite loss, perplexity 25.15 against a 28-token vocabulary. That is
+the uniform value for an untrained model, which is the correct sanity result
+rather than a suspiciously good one.
+
+**Stage A collection bug worth recording.** The first full run died 74 species
+in with a bare `TimeoutError`. `urlopen` raises it directly and it is not a
+`URLError` subclass, so the handler missed it. Over 800 requests a transient
+failure is close to certain, so fetches now retry with backoff, honour
+`Retry-After` on 429, do not retry a 4xx that will not change, and no single
+species can end the run. Shards are cached per species, so the relaunch
+resumed from 74 rather than starting over.
+
+**The Cas9 annotation screen is pulling its weight.** A six-species pilot
+covering 3,000 sequences already contained 4 Cas9 proteins — two matched on
+`cas9`, two on `crispr-associated endonuclease`. Extrapolated to the full
+400,000-sequence corpus that is several hundred Cas9 proteins which would have
+entered pre-training invisibly to the stage B leakage gate.
+
+**Gate wiring.** `06_leakage_test.py` now writes a `leakage_passed` marker
+recording the date, the number of alignments examined and the closest
+held-out-to-train identity; `11_train.py` refuses to start stage B without it.
+A stale marker is deleted when the gate fails, because a pass recorded for an
+earlier clean split would otherwise authorize training on a split that now
+leaks. Verified in three directions: clean split writes the marker, leaked
+split exits 3 and writes none, and a planted stale marker is removed.
+
+`11_train.py` also refuses to train when the validation split holds only one
+growth-temperature class. Gate 2 compares the correct token against a shuffled
+one, and on a single-class validation set shuffling changes nothing, so the
+check would pass vacuously.
+
 ## Decisions
 
 | Date | Decision | Reason |

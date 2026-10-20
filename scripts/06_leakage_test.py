@@ -28,6 +28,7 @@ import argparse
 import subprocess
 import sys
 import tempfile
+from datetime import date
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -144,11 +145,11 @@ def main() -> int:
                 return 1
             report = check_leakage(parse_alignment_tsv(alignment_tsv), params)
             _emit(report, params, args.report)
-            return _verdict(report, params)
+            return _verdict(report, params, splits_dir)
 
     report = check_leakage(parse_alignment_tsv(alignment_tsv), params)
     _emit(report, params, args.report)
-    return _verdict(report, params)
+    return _verdict(report, params, splits_dir)
 
 
 def _emit(report, params, report_path: Path | None) -> None:
@@ -167,7 +168,35 @@ def _emit(report, params, report_path: Path | None) -> None:
         print(f"  wrote {report_path}")
 
 
-def _verdict(report, params) -> int:
+def _write_marker(splits_dir: Path, report, params) -> None:
+    """Record that the gate passed, for 11_train.py to require.
+
+    Training must not be the step that discovers a leak, and "not yet
+    checked" must not be indistinguishable from "checked and clean", so the
+    marker is written only on a pass and removed on a failure.
+    """
+    marker = splits_dir / "leakage_passed"
+    if report.passed:
+        closest = max(
+            (p.identity for p in report.worst_by_query.values()), default=0.0
+        )
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(
+            f"passed {date.today().isoformat()}: "
+            f"{report.pairs_examined} alignments examined, "
+            f"closest held-out-to-train identity {closest:.1%}, "
+            f"threshold {params.max_identity_to_train:.0%} over "
+            f"{params.alignment_coverage:.0%} coverage\n"
+        )
+    elif marker.is_file():
+        # A stale marker from an earlier clean split would let training
+        # proceed on a split that now leaks.
+        marker.unlink()
+
+
+def _verdict(report, params, splits_dir: Path | None = None) -> int:
+    if splits_dir is not None:
+        _write_marker(splits_dir, report, params)
     if report.passed:
         print("\nLEAKAGE GATE PASSED")
         return 0
