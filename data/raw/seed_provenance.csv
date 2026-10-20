@@ -1,0 +1,9 @@
+name,source,requested_accession,resolved_accession,organism_requested,organism_resolved,cas9_type,role,length,protein_name,retrieved_on
+SpCas9,uniprot,Q99ZW2,Q99ZW2,Streptococcus pyogenes,Streptococcus pyogenes serotype M1,II-A,meso_control,1368,CRISPR-associated endonuclease Cas9/Csn1,2026-10-19
+SaCas9,uniprot,J7RUA5,J7RUA5,Staphylococcus aureus,Staphylococcus aureus,II-A,meso_control,1053,CRISPR-associated endonuclease Cas9,2026-10-19
+GeoCas9,uniprot,,A0ABF7PG96,Geobacillus stearothermophilus,Geobacillus stearothermophilus,II-C,thermo_control,1087,CRISPR-associated endonuclease Cas9,2026-10-19
+ThermoCas9,ncbi,WP_099233044.1,WP_099233044.1,Geobacillus thermodenitrificans T12,Geobacillus thermodenitrificans,II-C,thermo_control,1082,type II CRISPR RNA-guided endonuclease Cas9,2026-10-19
+NmeCas9,uniprot,C9X1G5,C9X1G5,Neisseria meningitidis,Neisseria meningitidis serogroup C (strain 8013),II-C,ortholog,1082,CRISPR-associated endonuclease Cas9,2026-10-19
+CjCas9,uniprot,Q0P897,Q0P897,Campylobacter jejuni,Campylobacter jejuni subsp. jejuni serotype O:2 (strain ATCC 700819 / NCTC 11168),II-C,ortholog,984,CRISPR-associated endonuclease Cas9,2026-10-19
+St1Cas9,uniprot,G3ECR1,G3ECR1,Streptococcus thermophilus,Streptococcus thermophilus,II-A,ortholog,1409,CRISPR-associated endonuclease Cas9,2026-10-19
+FnCas9,uniprot,A0Q5Y3,A0Q5Y3,Francisella tularensis subsp. novicida U112,Francisella tularensis subsp. novicida (strain ATCC 15482 / CCUG 33449 / U112),II-B,ortholog,1629,CRISPR-associated endonuclease Cas9,2026-10-19

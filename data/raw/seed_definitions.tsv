@@ -1,0 +1,24 @@
+# Reference Cas9 seeds for the homolog search.
+#
+# `source` is uniprot or ncbi. Most seeds resolve from UniProtKB; ThermoCas9
+# is not in UniProtKB (the Geobacillus thermodenitrificans T12 strain is
+# GenBank/RefSeq-only) so it is fetched from NCBI protein instead.
+#
+# `accession` is filled in only where it has been verified. Where it is blank,
+# 01_collect_seeds.py resolves the entry with `query` and records the accession
+# it actually found, so nothing in this table is guessed. Verified accessions
+# below were confirmed on 2026-10-19 against the published sequence lengths.
+#
+# cas9_type follows type II subtype nomenclature. `role` marks sequences used
+# as controls at evaluation time; whether the thermophilic ones are held out of
+# training is set by split.holdout_positive_controls in configs/data.yaml.
+#
+# name	source	accession	organism	cas9_type	role	query
+SpCas9	uniprot	Q99ZW2	Streptococcus pyogenes	II-A	meso_control	accession:Q99ZW2
+SaCas9	uniprot	J7RUA5	Staphylococcus aureus	II-A	meso_control	accession:J7RUA5
+GeoCas9	uniprot		Geobacillus stearothermophilus	II-C	thermo_control	protein_name:cas9 AND organism_name:"Geobacillus stearothermophilus"
+ThermoCas9	ncbi	WP_099233044.1	Geobacillus thermodenitrificans T12	II-C	thermo_control	WP_099233044.1
+NmeCas9	uniprot	C9X1G5	Neisseria meningitidis	II-C	ortholog	accession:C9X1G5
+CjCas9	uniprot	Q0P897	Campylobacter jejuni	II-C	ortholog	accession:Q0P897
+St1Cas9	uniprot	G3ECR1	Streptococcus thermophilus	II-A	ortholog	accession:G3ECR1
+FnCas9	uniprot	A0Q5Y3	Francisella tularensis subsp. novicida U112	II-B	ortholog	accession:A0Q5Y3

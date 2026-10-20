@@ -114,7 +114,43 @@ be competitive.
 
 | Date | Database | Version | Size | Location |
 | --- | --- | --- | --- | --- |
-| | | | | |
+| 2026-10-19 | UniProtKB (REST) | live query, see seed_provenance.csv | 8 records | `data/raw/seeds.fasta` |
+| 2026-10-19 | NCBI protein (E-utilities) | `WP_099233044.1` | 1 record | `data/raw/seeds.fasta` |
+
+### 2026-10-19 — Seed collection
+
+Eight reference Cas9s resolved and written to `data/raw/seeds.fasta`, with
+per-seed provenance in `data/raw/seed_provenance.csv`. Lengths were checked
+against published values:
+
+| Seed | Accession | Source | Length | Type |
+| --- | --- | --- | --- | --- |
+| SpCas9 | Q99ZW2 | UniProt (reviewed) | 1368 | II-A |
+| SaCas9 | J7RUA5 | UniProt | 1053 | II-A |
+| GeoCas9 | A0ABF7PG96 | UniProt | 1087 | II-C |
+| ThermoCas9 | WP_099233044.1 | NCBI RefSeq | 1082 | II-C |
+| NmeCas9 | C9X1G5 | UniProt | 1082 | II-C |
+| CjCas9 | Q0P897 | UniProt | 984 | II-C |
+| St1Cas9 | G3ECR1 | UniProt | 1409 | II-A |
+| FnCas9 | A0Q5Y3 | UniProt (reviewed) | 1629 | II-B |
+
+Two findings worth recording:
+
+1. **ThermoCas9 is not in UniProtKB.** The *Geobacillus thermodenitrificans*
+   T12 strain appears to be GenBank/RefSeq-only, so the thermophilic positive
+   control cannot be fetched from UniProt. `01_collect_seeds.py` therefore
+   supports an `ncbi` source per seed, keyed on an explicit accession.
+2. **The brief's 1,000-1,400 aa length estimate is too narrow at both ends.**
+   CjCas9 is 984 aa and FnCas9 (type II-B) is 1,629 aa, both verified reviewed
+   UniProt entries. `filter.max_length` was widened from 1,600 to 1,700 and
+   `min_length` left at 950 so that no reference seed is rejected by the
+   pipeline's own filter. A test asserts these bounds stay wide enough.
+
+Also hit a local environment issue worth noting for anyone reproducing: the
+python.org macOS build does not wire OpenSSL to the system keychain, so
+`urllib` raises CERTIFICATE_VERIFY_FAILED against UniProt on a fresh machine.
+`01_collect_seeds.py` prefers certifi's CA bundle rather than disabling
+verification.
 
 ## Tool versions
 

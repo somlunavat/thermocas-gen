@@ -24,11 +24,14 @@ search:
   sensitivity: very-sensitive   # diamond preset
   threads: 8
 
-# Length and composition filter. Cas9 orthologs span roughly 1,000-1,400 aa;
-# anything far outside that is a fragment or a fusion.
+# Length and composition filter. Most Cas9 orthologs span roughly 1,000-1,400
+# aa, but the range is wider than the brief's estimate at both ends: CjCas9 is
+# 984 aa and FnCas9 (type II-B) is 1,629 aa, both verified reviewed UniProt
+# entries. The bounds below admit every reference seed; anything outside is a
+# fragment or a fusion.
 filter:
   min_length: 950
-  max_length: 1600
+  max_length: 1700
   allowed_residues: ACDEFGHIKLMNPQRSTVWY   # reject X, B, Z, U, O and gaps
   drop_exact_duplicates: true
 

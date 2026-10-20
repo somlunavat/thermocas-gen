@@ -26,8 +26,12 @@ docs/
 data/raw/**
 data/processed/**
 !data/raw/.gitkeep
-!data/raw/seeds.fasta
 !data/processed/.gitkeep
+# Seeds and their provenance are small and reproducibility-critical: the
+# provenance table is the record of which accession each seed resolved to.
+!data/raw/seeds.fasta
+!data/raw/seed_definitions.tsv
+!data/raw/seed_provenance.csv
 
 # Split assignments and label tables ARE committed for reproducibility.
 !data/splits/**
