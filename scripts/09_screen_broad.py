@@ -43,7 +43,7 @@ from thermocas.data.cluster import (  # noqa: E402
     verify_no_cluster_straddles_splits,
     write_split_files,
 )
-from thermocas.data.fasta import read_fasta, write_fasta  # noqa: E402
+from thermocas.data.fasta import canonical_seq_id, read_fasta, write_fasta  # noqa: E402
 from thermocas.data.leakage import (  # noqa: E402
     LeakageParams,
     mmseqs_leakage_commands,
@@ -202,6 +202,22 @@ def main() -> int:
     assignments_by_id = parse_cluster_tsv(cluster_tsv)
     n_clusters = len(set(assignments_by_id.values()))
     print(f"  {n_clusters:,} clusters from {len(assignments_by_id):,} sequences")
+
+    # MMseqs2 keys its cluster table on the bare accession. If the corpus was
+    # written with full sp|ACC|NAME identifiers, nothing would join and the
+    # split would come out empty, so reconcile by canonical id rather than
+    # failing on an id-format mismatch.
+    matched = sum(1 for r in kept if r.seq_id in assignments_by_id)
+    if matched == 0 and kept:
+        canonical = {canonical_seq_id(k): v for k, v in assignments_by_id.items()}
+        remapped = {
+            r.seq_id: canonical[canonical_seq_id(r.seq_id)]
+            for r in kept
+            if canonical_seq_id(r.seq_id) in canonical
+        }
+        if remapped:
+            print(f"  reconciled {len(remapped):,} identifiers by canonical accession")
+            assignments_by_id = {**assignments_by_id, **remapped}
 
     metas = [
         SequenceMeta(

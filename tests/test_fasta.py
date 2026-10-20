@@ -86,3 +86,56 @@ def test_write_creates_parent_directories(tmp_path):
 
 def test_len_reports_sequence_length():
     assert len(FastaRecord("a", "", "MGKP")) == 4
+
+
+class TestCanonicalSeqId:
+    """MMseqs2 keys its cluster table on the bare accession.
+
+    A corpus written with full sp|ACC|NAME identifiers produces a cluster
+    table keyed on something else, so every downstream join finds nothing and
+    the split comes out empty. This was a real bug, caught only because the
+    Cas9 seeds happen to use plain accessions with no pipes.
+    """
+
+    @pytest.mark.parametrize(
+        "raw,expected",
+        [
+            ("sp|P33247|SQHC_ALIAD", "P33247"),
+            ("tr|A0A2M9CY37|A0A2M9CY37_9BACT", "A0A2M9CY37"),
+            ("ref|NP_123456|something", "NP_123456"),
+            ("gb|AAA12345|x", "AAA12345"),
+        ],
+    )
+    def test_uniprot_style_headers_reduce_to_the_accession(self, raw, expected):
+        from thermocas.data.fasta import canonical_seq_id
+
+        assert canonical_seq_id(raw) == expected
+
+    @pytest.mark.parametrize(
+        "raw",
+        ["Q99ZW2", "WP_099233044.1", "UniRef50_Q99ZW2", "A0ABF7PG96", "G3ECR1"],
+    )
+    def test_pipe_free_identifiers_are_unchanged(self, raw):
+        """MMseqs2 keeps these as-is, so canonicalizing must not alter them."""
+        from thermocas.data.fasta import canonical_seq_id
+
+        assert canonical_seq_id(raw) == raw
+
+    def test_two_field_form_keeps_the_first_field(self):
+        from thermocas.data.fasta import canonical_seq_id
+
+        assert canonical_seq_id("ACC|NAME") == "ACC"
+
+    def test_is_idempotent(self):
+        """Applying it twice must not strip further."""
+        from thermocas.data.fasta import canonical_seq_id
+
+        once = canonical_seq_id("sp|P33247|SQHC_ALIAD")
+        assert canonical_seq_id(once) == once
+
+    def test_every_committed_seed_is_already_canonical(self):
+        from thermocas.config import Config
+        from thermocas.data.fasta import canonical_seq_id, read_fasta
+
+        for record in read_fasta(Config.load("data").resolve_path("paths/seeds")):
+            assert canonical_seq_id(record.seq_id) == record.seq_id

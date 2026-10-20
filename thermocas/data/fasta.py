@@ -11,6 +11,32 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+def canonical_seq_id(raw_id: str) -> str:
+    """Reduce a FASTA identifier to the bare accession.
+
+    UniProt serves headers as ``sp|P33247|SQHC_ALIAD`` or ``tr|A0A123|...``.
+    MMseqs2 parses those and uses only the middle field as its identifier,
+    so a corpus written with the full three-part id produces cluster tables
+    keyed on something else, every downstream join silently finds nothing,
+    and a split ends up empty. Canonicalizing identifiers on the way in means
+    every tool in the pipeline agrees on what a sequence is called.
+
+    Identifiers without pipes, such as ``Q99ZW2``, ``UniRef50_X`` or
+    ``WP_099233044.1``, are returned unchanged; MMseqs2 keeps those as-is.
+    """
+    text = raw_id.strip()
+    if "|" not in text:
+        return text
+    parts = [p for p in text.split("|") if p]
+    if not parts:
+        return text
+    # sp|ACC|NAME and tr|ACC|NAME both carry the accession in the middle.
+    if len(parts) >= 3 and parts[0] in {"sp", "tr", "gb", "emb", "dbj", "ref", "pir", "prf"}:
+        return parts[1]
+    # Two-field forms such as ACC|NAME keep the first field.
+    return parts[0]
+
+
 @dataclass(frozen=True)
 class FastaRecord:
     seq_id: str

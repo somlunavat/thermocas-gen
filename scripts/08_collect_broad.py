@@ -44,7 +44,12 @@ from thermocas.data.broad import (  # noqa: E402
     SpeciesSelection,
     select_species,
 )
-from thermocas.data.fasta import FastaRecord, read_fasta, write_fasta  # noqa: E402
+from thermocas.data.fasta import (  # noqa: E402
+    FastaRecord,
+    canonical_seq_id,
+    read_fasta,
+    write_fasta,
+)
 from thermocas.data.ogt import OgtTable, parse_organism_from_header  # noqa: E402
 from thermocas.data.sequence_filter import SequenceFilter  # noqa: E402
 
@@ -281,10 +286,13 @@ def main() -> int:
                 continue
             seen_sequences.add(sequence)
 
-            kept.append(FastaRecord(record.seq_id, record.description, sequence))
+            # Canonical ids so MMseqs2's cluster table joins against this
+            # corpus; it keys on the accession, not the full sp|ACC|NAME form.
+            seq_id = canonical_seq_id(record.seq_id)
+            kept.append(FastaRecord(seq_id, record.description, sequence))
             rows.append(
                 {
-                    "seq_id": record.seq_id,
+                    "seq_id": seq_id,
                     "organism": plan.organism,
                     "organism_key": plan.organism_key,
                     "ogt_c": f"{plan.ogt_c:g}",
