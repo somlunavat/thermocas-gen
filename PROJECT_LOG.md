@@ -146,6 +146,82 @@ PF16595.11, PF16592.11, PF16593.12, PF21069.3, PF22385.1. Fetched from the
 InterPro API on 2026-10-20; the HMM headers declare HMMER3/f format built
 Nov 2019.
 
+### 2026-10-20 — OGT source verified; two problems in the data
+
+Downloaded and inspected the Gosha database rather than coding against the
+brief's description of it.
+
+**Source.** Gosha (Helena-Bueno, Brown & Melnikov, bioRxiv 2021.12.21.473645)
+is distributed on figshare, DOI 10.6084/m9.figshare.23257940, CC BY 4.0,
+version 1 posted 2023-05-29. Four CSVs; the one that matters is
+`all_species_temperatures.csv` (1.36 MB, 25,324 species). Downloaded
+2026-10-20. SHA-256 of the all-species file:
+`12e3fc9fe2aeceffc51d9e324c4915a75c5a36ec14387aebae9c4f1e1e8c0a33`.
+
+The brief said "CSV downloads updated monthly". The figshare snapshot is
+version 1 from 2023-05-29 and has not moved, so the monthly refresh applies to
+the web interface, not to this download. Treat the file as a fixed snapshot
+and record its checksum with any run.
+
+**Schema** is `Organism`, `Consensus optimal temperature`, then one column per
+source culture collection: ARS, ATCC, BCCM, BCRC, CABRI, CCM, CCUG, CECT,
+CICC, DSMZ, HAMBI, JCM, KEMB, NBIMCC, NBRC, NCIMB, NCMA, NCTC, NIES, VKM, CIP.
+The consensus is the median across whichever collections reported a value.
+This is better than expected: **the per-collection columns are the independent
+cross-check the brief wanted a second database for**, so TEMPURA/BacDive is
+not needed for the basic agreement check. Organism names are bare binomials,
+while the NCBI-derived companion files use strain-level names, so joining
+needs normalization.
+
+**Problem 1: physically impossible values.** *Bacillus haloalkaliphilus* is
+listed at 230 °C and *Halomonas aerodenitrificans* at 187 °C, each from a
+single collection. Both are mesophiles. Nothing grows above about 122 °C, so
+OGT is now bounded by `ogt.min_plausible_c` / `max_plausible_c` (-20 to 130),
+and out-of-range rows are rejected and counted. Exactly 2 of 25,324 rows are
+dropped.
+
+**Problem 2: errors inflate temperature, so they land in the thermophilic
+classes.** *Streptococcus massilliensis* is listed at 96 °C on the authority
+of one collection, which would label a mesophile as a hyperthermophile — in
+the very class this project has least data in and most needs to be right
+about. Single-collection entries cannot be trusted.
+
+**The cross-check criterion had to be redesigned against the real data.** An
+absolute spread tolerance, which the config originally had at 5 °C, rejects
+genuine thermophiles: *Pyrococcus furiosus* spans 20 °C across five
+collections and *Geobacillus stearothermophilus* 15 °C across eighteen, and
+both are beyond doubt thermophilic. Spread grows with temperature. Agreement
+is therefore measured on the **bin** rather than on degrees: the fraction of
+reporting collections that place the species in the same class as the
+consensus. Effect at the species level:
+
+| Criterion | meso | thermo | hyper |
+| --- | --- | --- | --- |
+| >=2 sources | 13945 | 507 | 173 |
+| >=2 sources, spread <= 5 °C | 11677 | 434 | 164 |
+| >=2 sources, bin agreement >= 0.67 | 13898 | 484 | 171 |
+
+Bin agreement keeps more genuine thermophiles while still rejecting the
+single-source errors, which the source count catches on its own. It also
+correctly flags real ambiguity: *Thermus thermophilus* at 67 °C has sources on
+both sides of the 70 °C boundary and scores 0.38, so its class is genuinely
+uncertain and it is not used as a confident label.
+
+**Gate 1 risk, flagged early.** At the species level, before any intersection
+with Cas9 homologs, cross-checked counts are thermo 484 and hyper 171. These
+are hard ceilings: the Cas9-labeled corpus can only be a subset. The configured
+`min_per_bin: 200` is therefore almost certainly unreachable for `hyper` and
+likely tight for `thermo`. My recommendation, for a decision before stage 1e:
+plan on merging thermo and hyper into one "thermophilic" class, or on treating
+OGT as a continuous regression target with the bins used only for conditioning
+tokens. Deciding now is cheaper than discovering it at Gate 1.
+
+Verified against all eight seed hosts: 8/8 resolve, 7/8 cross-check (FnCas9's
+*Francisella tularensis* has a single source). GeoCas9 and ThermoCas9 both land
+in `thermo` with agreement 0.944 and 1.000. *Streptococcus thermophilus* lands
+in `meso` at 37 °C, which is correct biology and a reminder that organism names
+are not labels.
+
 ## Decisions
 
 | Date | Decision | Reason |
@@ -155,6 +231,8 @@ Nov 2019.
 | 2026-10-19 | Keep the from-scratch transformer as a labeled weak baseline only | Honest comparison point; not expected to be competitive |
 | 2026-10-19 | Growth-temperature bins: meso < 45 °C, thermo 45–70 °C, hyper > 70 °C | Brief's defaults; set in `configs/data.yaml` and overridable |
 | 2026-10-19 | Hold GeoCas9 and ThermoCas9 out of training as positive controls | Default pending review: a thermophilic Cas9 in the training set would make "shifted toward thermophilic" partly memorization. Flip `holdout_positive_controls` in `configs/data.yaml` to change |
+| 2026-10-20 | Cross-check OGT within Gosha, on bin agreement rather than absolute spread | The per-collection columns are independent sources, so no second database is needed; spread scales with temperature, so a fixed tolerance rejects genuine thermophiles |
+| 2026-10-20 | Bound OGT to [-20, 130] °C | Gosha contains single-source values of 230 °C and 187 °C for known mesophiles |
 | 2026-10-19 | Homolog search runs on a cloud machine, not locally | 16 GB unified memory measured on this Mac; a UniRef50 DIAMOND index does not fit comfortably alongside the OS. Local runs use a subset for smoke-testing only |
 
 ## Environment

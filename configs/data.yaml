@@ -89,8 +89,29 @@ growth_temperature:
     - {name: hyper,  min: 70,       max: .inf}
   min_per_bin: 200          # Gate 1 fails below this in any bin
   require_crosscheck: false # true restricts training to ogt_verified rows
-  crosscheck_sample_size: 200
-  crosscheck_tolerance_c: 5.0   # agreement if |ogt_a - ogt_b| <= this
+
+# OGT labels from the Gosha database (bioRxiv 2021.12.21.473645), distributed
+# as CSV on figshare (DOI 10.6084/m9.figshare.23257940, CC BY 4.0). The
+# all-species file carries a consensus column plus one column per source
+# culture collection, so the cross-check the brief wanted a second database
+# for can be done within Gosha itself.
+ogt:
+  # Physically implausible values are present and must be bounded away. Gosha
+  # lists Bacillus haloalkaliphilus at 230 C and Halomonas aerodenitrificans
+  # at 187 C, each from a single collection; nothing grows above ~122 C.
+  min_plausible_c: -20.0
+  max_plausible_c: 130.0
+
+  # Cross-check within Gosha. Scrape errors inflate temperature, so they land
+  # in the thermophilic classes specifically: Streptococcus massilliensis is
+  # listed at 96 C by one collection alone, which would label a mesophile a
+  # hyperthermophile. Two independent collections are required, and they must
+  # agree on the BIN rather than on absolute degrees -- spread grows with
+  # temperature, and Pyrococcus furiosus spans 20 C across five collections
+  # while being beyond doubt a hyperthermophile.
+  crosscheck:
+    min_sources: 2
+    min_bin_agreement: 0.67
 
 # Cluster-level splitting. Splitting by sequence would leak near-duplicate
 # homologs across splits; splitting by cluster is what makes the test set mean
