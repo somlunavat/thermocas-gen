@@ -39,26 +39,46 @@ filter:
 # to count as a Cas9 rather than a distant RuvC-only relative.
 #
 # Each requirement lists alternative Pfam profiles and is satisfied when ANY
-# of them hits. Cas9's RuvC is split into three discontiguous subdomains and
-# Pfam models them separately, so pinning a single accession would reject
-# orthologs that a different subdomain model happens to match. Accessions
-# below were verified against the InterPro API on 2026-10-19; the Pfam release
-# is recorded in PROJECT_LOG.md.
+# of them hits below hmm_evalue. Accessions and profile versions were verified
+# against the InterPro API and then checked by running hmmsearch against the
+# eight reference seeds on 2026-10-20; see PROJECT_LOG.md for the per-seed
+# results.
+#
+# PF22702 (Cas9_RuvC) is the Cas9-specific RuvC model and is the one that
+# matters: the generic PF18541 (RuvC_III) misses St1Cas9 completely, so
+# requiring PF18541 alone would reject a canonical type II-A Cas9. PF18541 is
+# kept as a weaker alternative because it hits some orthologs more strongly
+# than PF22702 does.
+#
+# Known coverage gap: FnCas9 (type II-B, Csx12-like) matches no Pfam RuvC
+# model at all, so divergent type II-B orthologs are under-recovered by this
+# filter. This is a scope limitation to report, not something to paper over by
+# accepting a non-RuvC domain as RuvC evidence.
 domains:
   require: [RuvC, HNH]
   hmm_evalue: 1.0e-3
-  # hmmsearch orientation: profiles are the query, sequences are the target.
+  # hmmsearch orientation: profiles are the query, sequences are the target,
+  # and the per-domain i-Evalue (domtblout column 13) is the value compared.
   hmm_profiles:
     RuvC:
-      - PF18541   # RuvC_III, RuvC endonuclease subdomain 3
+      - PF22702   # Cas9_RuvC, Cas9 RuvC domain          (profile PF22702.3)
+      - PF18541   # RuvC_III, RuvC endonuclease subdomain 3 (PF18541.8)
     HNH:
-      - PF01844   # HNH, HNH endonuclease
-      - PF13395   # HNH_4, HNH endonuclease
-  # Recorded for the evaluation stage's PAM-interacting domain check, not
-  # required for a sequence to be kept here.
+      - PF13395   # HNH_4, HNH endonuclease              (PF13395.13)
+      - PF01844   # HNH, HNH endonuclease                (PF01844.30)
+  # Recorded for the evaluation stage's architecture and PAM-interacting
+  # domain checks. Not required for a sequence to be kept here.
   informational_profiles:
     Cas9_PI:
-      - PF16595   # PAM-interacting domain of Cas9
+      - PF16595   # PAM-interacting domain of Cas9       (PF16595.11)
+    Cas9_REC:
+      - PF16592   # REC lobe of Cas9                     (PF16592.11)
+    Cas9_BH:
+      - PF16593   # Bridge helix of Cas9                 (PF16593.12)
+    Cas9_typeIIB:
+      - PF21069   # Csx12, Cas9 alpha-helical lobe       (PF21069.3)
+      - PF22385   # Cas9_C_2, Cas9 C-terminal domain     (PF22385.1)
+  profile_dir: data/raw/pfam
 
 # Growth-temperature binning. These are the control-token classes, not
 # decoding settings. Edges are in degrees Celsius, upper-exclusive.

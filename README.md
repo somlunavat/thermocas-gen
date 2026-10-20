@@ -81,6 +81,7 @@ data/
   processed/  hits.tsv, cas9_labeled.fasta, label_table.csv (gitignored)
   splits/     cluster assignments (committed)
 scripts/      numbered pipeline stages, run in order
+              00_fetch_pfam.py fetches the HMM profiles (not committed)
 thermocas/
   model/      tokenizer, dataset, LightningModule, train, generate
   eval/       thermostability scoring, folding, structure metrics, controls, report

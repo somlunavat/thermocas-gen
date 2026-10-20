@@ -91,31 +91,60 @@ be competitive.
 
 ---
 
-### 2026-10-20 — Pfam accessions verified for the domain filter
+### 2026-10-20 — Tools installed, Pfam profiles corrected by experiment
 
-Checked each accession against the InterPro API rather than trusting the
-values written into the config:
+Installed the bioinformatics tools locally (Homebrew, native arm64 bottles):
 
-| Accession | Short name | Full name |
-| --- | --- | --- |
-| PF18541 | RuvC_III | RuvC endonuclease subdomain 3 |
-| PF01844 | HNH | HNH endonuclease |
-| PF13395 | HNH_4 | HNH endonuclease |
-| PF16595 | Cas9_PI | PAM-interacting domain of Cas9 |
+| Tool | Version |
+| --- | --- |
+| DIAMOND | 2.2.8 |
+| MMseqs2 | 18-8cc5c |
+| HMMER | 3.4 (Aug 2023) |
 
-Changed `domains.hmm_profiles` from one accession per domain to a list of
-alternatives, satisfied when any profile hits. Cas9's RuvC is split into three
-discontiguous subdomains that Pfam models separately, so pinning the single
-subdomain-3 model would reject orthologs matched by a different subdomain
-model. HNH gets both PF01844 and PF13395 for the same reason.
+Then ran hmmsearch against the eight reference seeds instead of trusting the
+accessions written into the config. This found a real error.
 
-PF16595 is recorded under `informational_profiles`: it is not required for a
-sequence to be kept, but the evaluation stage's PAM-interacting domain check
-needs it.
+**The config had the wrong RuvC model.** It pinned PF18541 (RuvC_III), a
+generic RuvC subdomain. Querying InterPro for the Pfam domains actually
+annotated on SpCas9 and St1Cas9 showed the Cas9-specific model is **PF22702
+(Cas9_RuvC)**. With PF18541 alone, St1Cas9 — a canonical type II-A Cas9 —
+produced no RuvC hit at all and would have been thrown out of the corpus.
 
-Still to do before this stage can run: HMMER is not installed on this machine
-(nor are DIAMOND or MMseqs2), and the Pfam release version must be recorded
-here once the profiles are actually fetched.
+Per-seed results with both models accepted (i-Evalue, domtblout column 13):
+
+| Seed | Length | RuvC | best RuvC model | HNH | Verdict |
+| --- | --- | --- | --- | --- | --- |
+| SpCas9 | 1368 | 9.9e-70 | Cas9_RuvC | 2.4e-19 | pass |
+| SaCas9 | 1053 | 8.7e-23 | Cas9_RuvC | 3.8e-24 | pass |
+| GeoCas9 | 1087 | 2.8e-14 | RuvC_III | 9.5e-24 | pass |
+| ThermoCas9 | 1082 | 1.1e-14 | RuvC_III | 1.9e-24 | pass |
+| NmeCas9 | 1082 | 3.5e-18 | RuvC_III | 1.4e-25 | pass |
+| CjCas9 | 984 | 1.2e-20 | RuvC_III | 3.4e-28 | pass |
+| St1Cas9 | 1409 | 1.2e-66 | Cas9_RuvC | 1.4e-21 | pass |
+| FnCas9 | 1629 | none | — | 6.7e-08 | **fail** |
+
+**Both RuvC profiles are load-bearing.** Three seeds are best matched by
+PF22702 and four by PF18541, so neither model alone covers the family. This is
+why `hmm_profiles` takes a list of alternatives rather than one accession per
+domain.
+
+**Known limitation: type II-B.** FnCas9 matches no Pfam RuvC model, while
+hitting the Csx12 / Cas9 C-terminal models at 2.6e-202. It is unambiguously a
+Cas9 whose RuvC no current Pfam model captures, so divergent type II-B
+orthologs will be under-recovered by this filter. Recorded as a scope
+limitation for the paper rather than worked around by accepting a non-RuvC
+domain as RuvC evidence, which would weaken the catalytic claim. A test
+asserts the gap still exists so that a future Pfam release closing it shows up
+as a failure rather than a stale claim.
+
+HNH needs both models too, though less dramatically: every seed is best
+matched by PF13395 (HNH_4), but PF01844 hits four of them and costs nothing to
+keep.
+
+Profile versions in use: PF22702.3, PF18541.8, PF13395.13, PF01844.30,
+PF16595.11, PF16592.11, PF16593.12, PF21069.3, PF22385.1. Fetched from the
+InterPro API on 2026-10-20; the HMM headers declare HMMER3/f format built
+Nov 2019.
 
 ## Decisions
 
