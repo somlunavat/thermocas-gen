@@ -359,6 +359,44 @@ Stage A has no test split by design. It is not evaluated on its own; it exists
 to initialize stage B, and all held-out evaluation belongs on the Cas9 corpus
 where the natural controls and the structural metrics live.
 
+### 2026-10-20 — Pretrained checkpoint corrected: ProGen2-small cannot fit a Cas9
+
+The brief recommended ProGen2-small and `model.yaml` had it. Checked the
+published config instead of trusting the recommendation: **n_positions=1024**.
+Cas9 is 984-1,629 aa, so SpCas9 at 1,368 does not fit. Only CjCas9 (984) would
+have.
+
+This is the prior repository's central bug arriving again with a different
+number — a context too short for the protein, dropping or truncating it
+silently. The `required_context` assertion in the config was already designed
+to catch it at startup, but the checkpoint named was wrong.
+
+| Checkpoint | Params | n_positions | Fits Cas9 |
+| --- | --- | --- | --- |
+| progen2-small | 151M | 1024 | no |
+| **progen2-base** | **765M** | **2048** | **yes** |
+| progen2-large | 2.7B | 1024 | no |
+| ESM-2 650M | 650M | 1026 | no, and a masked LM |
+| ProtT5-XL | 3B | 512 declared | relative positions, extensible |
+
+**progen2-base has a longer context than progen2-large**; size does not track
+context in this family, so picking the largest model that fits the GPU lands
+on one that cannot see a whole Cas9.
+
+Switched both `conditioned_lm` and `unconditioned_lm` to progen2-base, and set
+`required_context: 1703` (filter.max_length of 1,700 residues plus BOS, the
+growth-temperature control token and EOS). `train.yaml`'s `data.max_length`
+and the scratch baseline's `max_length` were aligned to the same budget. Tests
+now assert that every configured context covers the longest admissible
+sequence, that the checkpoint is not one of the 1024-token variants, and that
+the ablation uses the same checkpoint as the main model — otherwise the
+ablation would measure the checkpoint rather than the conditioning token.
+
+Open consequence: 765M parameters instead of 151M changes the compute story.
+LoRA with bf16 and gradient checkpointing should fit a 16 GB cloud GPU at
+batch 1, but that is unmeasured and should be smoke-tested before planning a
+real training schedule.
+
 ## Decisions
 
 | Date | Decision | Reason |
@@ -368,6 +406,7 @@ where the natural controls and the structural metrics live.
 | 2026-10-19 | Keep the from-scratch transformer as a labeled weak baseline only | Honest comparison point; not expected to be competitive |
 | 2026-10-19 | Growth-temperature bins: meso < 45 °C, thermo 45–70 °C, hyper > 70 °C | Brief's defaults; set in `configs/data.yaml` and overridable |
 | 2026-10-19 | Hold GeoCas9 and ThermoCas9 out of training as positive controls | Default pending review: a thermophilic Cas9 in the training set would make "shifted toward thermophilic" partly memorization. Flip `holdout_positive_controls` in `configs/data.yaml` to change |
+| 2026-10-20 | ProGen2-base as the pretrained checkpoint, not -small or -large | Both of those declare n_positions=1024, which cannot fit SpCas9's 1,368 residues; base declares 2048 |
 | 2026-10-20 | Two-stage training: broad temperature-labeled proteins, then Cas9 | ~10 independent thermophilic Cas9 clusters exist; conditioning cannot be learned from Cas9 alone, but stage A reaches 103 °C where Cas9 stops at 60 °C |
 | 2026-10-20 | Keep the thermophilic threshold at 45 °C | Lowering it would pull 37-44 °C mesophiles into the thermophilic class, making Gate 1 pass while making the result meaningless |
 | 2026-10-20 | Screen Cas9 out of stage A by annotation and alignment, stricter than stage B | A held-out Cas9 appearing in pre-training would void the stage B leakage gate silently |

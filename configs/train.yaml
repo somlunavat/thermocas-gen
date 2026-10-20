@@ -13,7 +13,8 @@ data:
   labeled_fasta: data/processed/cas9_labeled.fasta
   label_table: data/processed/label_table.csv
   splits_dir: data/splits
-  max_length: 1536
+  # Tokens, not residues: 1,700 residues plus BOS, control token and EOS.
+  max_length: 1703
   # Sequences longer than max_length are dropped and counted, never silently
   # discarded. The prior repo's silent drop is the bug this guards against.
   on_too_long: drop_and_report   # drop_and_report | truncate

@@ -6,10 +6,18 @@ active: conditioned_lm
 # discrete growth-temperature token prepended to each sequence.
 conditioned_lm:
   kind: pretrained_lm
-  checkpoint: hugohrban/progen2-small
-  # Verify before committing to a run: the context must cover a full Cas9 plus
-  # the control token. train.py asserts this against the loaded config.
-  required_context: 1536
+  # progen2-BASE, not -small and not -large. Checked against the published
+  # configs on 2026-10-20: progen2-small and progen2-large both declare
+  # n_positions=1024, which does not fit SpCas9 (1,368 aa), let alone FnCas9
+  # (1,629 aa). progen2-base declares n_positions=2048 and does. The size
+  # ordering is counter-intuitive -- base has the longest context of the three
+  # -- so this is easy to get wrong, and getting it wrong reproduces the prior
+  # repository's central bug with a different number.
+  checkpoint: hugohrban/progen2-base   # 765M params, n_positions=2048
+  # filter.max_length is 1,700 residues, plus BOS, the growth-temperature
+  # control token and EOS. train.py asserts the checkpoint provides at least
+  # this and refuses to start otherwise.
+  required_context: 1703
   use_growth_temp_token: true
   # Fraction of examples whose growth-temperature token is replaced by the
   # unconditional token, enabling classifier-free-guidance-style strengthening
@@ -36,8 +44,10 @@ conditioned_lm:
 # the growth-temperature label matters is measured against this.
 unconditioned_lm:
   kind: pretrained_lm
-  checkpoint: hugohrban/progen2-small
-  required_context: 1536
+  # Must match conditioned_lm exactly apart from the conditioning, or the
+  # ablation measures the checkpoint rather than the temperature token.
+  checkpoint: hugohrban/progen2-base
+  required_context: 1703
   use_growth_temp_token: false
   growth_temp_token_dropout: 0.0
   ogt_head:
@@ -61,7 +71,7 @@ scratch_transformer:
   n_layers: 6
   ffn_mult: 4
   dropout: 0.1
-  max_length: 1536
+  max_length: 1792          # covers 1,700 residues plus special tokens
   position: rotary           # rotary | alibi
   rope_theta: 10000.0
   norm: pre                  # pre-norm; the prior repo's post-norm was less stable

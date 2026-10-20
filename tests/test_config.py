@@ -144,3 +144,57 @@ class TestGrowthTemperatureBinning:
     def test_empty_bin_list_is_rejected(self):
         with pytest.raises(ConfigError):
             GrowthTemperatureBinner([])
+
+
+class TestContextLengthCoversCas9:
+    """The prior repository's central bug was a context too short for Cas9.
+
+    It capped max_length at 512 and silently dropped every full-length Cas9.
+    These tests make the same class of mistake impossible to reintroduce,
+    including by swapping in a pretrained checkpoint with a shorter context.
+    """
+
+    def required_tokens(self) -> int:
+        # Residues plus BOS, the growth-temperature control token, and EOS.
+        return Config.load("data")["filter/max_length"] + 3
+
+    def test_pretrained_context_covers_the_longest_admissible_sequence(self):
+        model = Config.load("model")
+        for name in ("conditioned_lm", "unconditioned_lm"):
+            assert model[f"{name}/required_context"] >= self.required_tokens(), name
+
+    def test_scratch_baseline_context_covers_it_too(self):
+        model = Config.load("model")
+        assert model["scratch_transformer/max_length"] >= self.required_tokens()
+
+    def test_training_max_length_covers_it(self):
+        assert Config.load("train")["data/max_length"] >= self.required_tokens()
+
+    def test_checkpoint_is_one_with_a_long_enough_context(self):
+        """progen2-small and progen2-large both declare n_positions=1024,
+        which cannot hold SpCas9 at 1,368 residues. Only progen2-base, at
+        2048, can. The size ordering is counter-intuitive, so the choice is
+        pinned here rather than left to whoever edits the config next.
+        """
+        model = Config.load("model")
+        for name in ("conditioned_lm", "unconditioned_lm"):
+            checkpoint = model[f"{name}/checkpoint"]
+            assert not checkpoint.endswith(("progen2-small", "progen2-large")), (
+                f"{name} uses {checkpoint}, whose context is 1024 tokens and "
+                "cannot fit a full-length Cas9"
+            )
+
+    def test_ablation_uses_the_same_checkpoint_as_the_main_model(self):
+        """Otherwise the ablation measures the checkpoint, not the token."""
+        model = Config.load("model")
+        assert model["conditioned_lm/checkpoint"] == model["unconditioned_lm/checkpoint"]
+
+    def test_sequences_that_must_fit_actually_fit(self):
+        """Checked against the real committed seeds, not against a constant."""
+        from thermocas.data.fasta import read_fasta
+
+        data = Config.load("data")
+        budget = Config.load("model")["conditioned_lm/required_context"]
+        for record in read_fasta(data.resolve_path("paths/seeds")):
+            if len(record) <= data["filter/max_length"]:
+                assert len(record) + 3 <= budget, f"{record.seq_id} ({len(record)} aa) does not fit"
