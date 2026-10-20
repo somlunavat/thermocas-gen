@@ -1,0 +1,75 @@
+# Model definitions. `active` selects which one train.py builds.
+
+active: conditioned_lm
+
+# Primary model: pretrained autoregressive protein LM, LoRA-adapted, with a
+# discrete growth-temperature token prepended to each sequence.
+conditioned_lm:
+  kind: pretrained_lm
+  checkpoint: hugohrban/progen2-small
+  # Verify before committing to a run: the context must cover a full Cas9 plus
+  # the control token. train.py asserts this against the loaded config.
+  required_context: 1536
+  use_growth_temp_token: true
+  # Fraction of examples whose growth-temperature token is replaced by the
+  # unconditional token, enabling classifier-free-guidance-style strengthening
+  # at generation time.
+  growth_temp_token_dropout: 0.10
+  # Auxiliary regression head predicting OGT from the pooled representation.
+  # Doubles as an in-model scorer; weighted into the loss by train.yaml.
+  ogt_head:
+    enabled: true
+    hidden: 256
+    dropout: 0.1
+  lora:
+    enabled: true
+    r: 16
+    alpha: 32
+    dropout: 0.05
+    target_modules: [qkv_proj, out_proj]
+
+# Ablation: identical to the above with conditioning removed. Any claim that
+# the growth-temperature label matters is measured against this.
+unconditioned_lm:
+  kind: pretrained_lm
+  checkpoint: hugohrban/progen2-small
+  required_context: 1536
+  use_growth_temp_token: false
+  growth_temp_token_dropout: 0.0
+  ogt_head:
+    enabled: false
+  lora:
+    enabled: true
+    r: 16
+    alpha: 32
+    dropout: 0.05
+    target_modules: [qkv_proj, out_proj]
+
+# From-scratch baseline, rewritten from the prior repository's masked LM.
+# Rotary positions replace learned absolute embeddings so context is not
+# capped, and attention goes through scaled_dot_product_attention so a
+# 1,536-token sequence does not materialize a dense L x L matrix.
+# Labeled a weak baseline on purpose; it is not expected to be competitive.
+scratch_transformer:
+  kind: scratch_mlm
+  d_model: 256
+  n_heads: 8
+  n_layers: 6
+  ffn_mult: 4
+  dropout: 0.1
+  max_length: 1536
+  position: rotary           # rotary | alibi
+  rope_theta: 10000.0
+  norm: pre                  # pre-norm; the prior repo's post-norm was less stable
+  mask_prob: 0.15
+  use_growth_temp_token: true
+  growth_temp_token_dropout: 0.10
+
+# Simplest possible baseline: predict OGT from amino-acid composition alone.
+# If this matches the language model, the language model is not earning its
+# complexity.
+composition_baseline:
+  kind: composition
+  features: [aa_frequency, charge_fraction, ivywrel]
+  estimator: ridge
+  alpha: 1.0

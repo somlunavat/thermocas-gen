@@ -1,0 +1,47 @@
+# Stage 3: generation.
+#
+# `growth_temperature_targets` are OGT labels in Celsius, i.e. what the model is
+# conditioned on. `sampling` holds decoding settings. These two are never
+# conflated; see the terminology table in README.md.
+
+seed: 20261019
+
+checkpoint: checkpoints/last.ckpt
+
+growth_temperature_targets: [25, 45, 65, 75]
+
+# Variants of a seed Cas9 conditioned on a target growth temperature. Easier to
+# evaluate than free generation because edits can be counted against the seed.
+mode: seeded_variants          # seeded_variants | unconditional
+seed_sequences: data/raw/seeds.fasta
+n_per_seed_per_target: 50
+
+sampling:
+  # Softmax divisor at decode time. Unrelated to growth temperature.
+  sampling_temperature: [0.8, 1.0]
+  top_p: [0.9, 0.95]
+  top_k: 0                     # 0 disables top-k
+  max_new_tokens: 1500
+  repetition_penalty: 1.0
+
+# Classifier-free-guidance-style strengthening, available because training
+# dropped the growth-temperature token on a fraction of examples.
+guidance:
+  enabled: true
+  scale: [1.0, 2.0]
+
+# Post-generation filter. Candidates failing any check are recorded with the
+# reason, not dropped silently.
+filter:
+  min_length: 950
+  max_length: 1600
+  require_domains: [RuvC, HNH]
+  max_repeat_run: 10           # longest tolerated single-residue run
+  max_repeat_kmer: 6           # k for repeated-motif detection
+  allowed_residues: ACDEFGHIKLMNPQRSTVWY
+
+novelty:
+  # Identity to the nearest training sequence. Above this, a candidate is
+  # memorization rather than generation.
+  max_identity_to_train: 0.95
+  report_nearest_n: 5

@@ -1,0 +1,59 @@
+# Stage 2: training. Device is chosen from config so the same code runs on
+# mps, cpu and cuda without edits.
+
+seed: 20261019
+
+device:
+  accelerator: auto        # auto | mps | cpu | cuda
+  # fp16 autocast is unsupported on mps; bf16-mixed on cuda, 32 on mps/cpu.
+  # resolve_precision() in thermocas/model/device.py picks per accelerator.
+  precision: auto
+
+data:
+  labeled_fasta: data/processed/cas9_labeled.fasta
+  label_table: data/processed/label_table.csv
+  splits_dir: data/splits
+  max_length: 1536
+  # Sequences longer than max_length are dropped and counted, never silently
+  # discarded. The prior repo's silent drop is the bug this guards against.
+  on_too_long: drop_and_report   # drop_and_report | truncate
+  num_workers: 0                 # 0 is required for stability on mps
+
+optim:
+  lr: 1.0e-4
+  weight_decay: 0.01
+  betas: [0.9, 0.999]
+  scheduler: cosine_with_warmup
+  warmup_steps: 200
+  max_steps: 20000
+  grad_clip: 1.0
+
+batch:
+  size: 1                  # a 1,536-token Cas9 is large; scale on the GPU
+  accumulate_grad_batches: 16
+  val_size: 2
+
+loss:
+  # Weight on the auxiliary OGT regression head, if model.yaml enables it.
+  ogt_head_weight: 0.1
+
+checkpoint:
+  dir: checkpoints
+  every_n_steps: 500
+  save_top_k: 3
+  monitor: val_loss
+  mode: min
+
+# Gate 2. Validation perplexity with the correct growth-temperature token must
+# beat perplexity with a shuffled token by this margin, or the run stops and
+# nothing is generated.
+conditioning_gate:
+  enabled: true
+  min_perplexity_gain: 0.02     # relative: (ppl_shuffled - ppl_true) / ppl_shuffled
+  n_shuffles: 5
+  fail_on_violation: true
+
+logging:
+  backend: csv             # csv | wandb
+  project: thermocas-gen
+  log_every_n_steps: 25

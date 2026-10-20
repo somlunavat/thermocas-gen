@@ -1,0 +1,68 @@
+# Stage 4: evaluation.
+#
+# Structure prediction is a plausibility filter here, not a thermostability
+# measurement. Nothing in this stage licenses a claim that a sequence is
+# heat-resistant.
+
+seed: 20261019
+
+inputs:
+  generated: generated/candidates.fasta
+  label_table: data/processed/label_table.csv
+
+# Folded through the identical pipeline as the generated candidates, so
+# structural quality is comparable across groups.
+controls:
+  natural_thermophilic: [GeoCas9, ThermoCas9]
+  natural_mesophilic: [SpCas9, SaCas9]
+  # Length-matched scrambles establish the floor for every structural metric.
+  scrambled:
+    enabled: true
+    n_per_candidate: 1
+    preserve_composition: true
+
+# Sequence-level conditioning check: do high-target candidates differ from
+# low-target ones in the directions thermophilic proteins are known to differ?
+composition:
+  metrics: [ivywrel, charged_fraction, net_charge, gravy, aa_frequency]
+  compare_targets: [25, 75]
+
+# A classifier we did not train, so the thermostability signal is not circular.
+thermo_score:
+  tool: temstapro
+  model_dir: null          # set at run time; version recorded in PROJECT_LOG.md
+  batch_size: 8
+
+# Bulk screen everything cheaply, then fold only the finalists.
+folding:
+  screen:
+    tool: esmfold
+    chunk_size: 64         # lowers peak memory on long sequences
+    max_candidates: null   # null = all that pass the generation filter
+  finalists:
+    tool: colabfold
+    select_by: plddt
+    top_n: 20
+    num_recycles: 3
+  # AlphaFold 2 folds the protein alone. Modeling the sgRNA/DNA complex needs
+  # AlphaFold 3, whose access and licensing terms must be checked before use.
+  model_complex: false
+
+structure:
+  metrics: [plddt, ptm, tm_score, rmsd]
+  reference_structures: [GeoCas9, ThermoCas9, SpCas9]
+  # Correlational stability features only.
+  stability_features: [salt_bridges, core_packing, loop_length, hydrophobic_sasa]
+  ddg:
+    enabled: false         # FoldX/Rosetta are licensed; off by default
+    tool: null
+
+diversity:
+  pairwise_identity: true
+  cluster_min_seq_id: 0.90
+
+report:
+  out_dir: outputs/report
+  figure_format: pdf
+  # Figure titles and captions must not imply measured thermostability.
+  claim_guard: true

@@ -1,0 +1,82 @@
+# Stage 1: homolog collection, labeling, clustering and splitting.
+# Every threshold the pipeline uses lives here. Scripts read this file and
+# never carry their own defaults.
+
+seed: 20261019
+
+paths:
+  seeds: data/raw/seeds.fasta
+  hits: data/processed/hits.tsv
+  labeled_fasta: data/processed/cas9_labeled.fasta
+  label_table: data/processed/label_table.csv
+  splits_dir: data/splits
+  ogt_source: data/raw/gosha.csv            # set by 04_join_ogt.py --ogt-csv
+  ogt_crosscheck: data/raw/ogt_crosscheck.csv  # TEMPURA / BacDive / Engqvist
+
+# Homolog search. Protein query against protein database (blastp-style);
+# never blastx, since seeds and database are both protein.
+search:
+  tool: diamond                 # diamond | mmseqs2
+  database: uniref50            # recorded in PROJECT_LOG.md with version + date
+  max_evalue: 1.0e-5
+  min_query_coverage: 0.70      # fraction of the query aligned
+  max_target_seqs: 5000
+  sensitivity: very-sensitive   # diamond preset
+  threads: 8
+
+# Length and composition filter. Cas9 orthologs span roughly 1,000-1,400 aa;
+# anything far outside that is a fragment or a fusion.
+filter:
+  min_length: 950
+  max_length: 1600
+  allowed_residues: ACDEFGHIKLMNPQRSTVWY   # reject X, B, Z, U, O and gaps
+  drop_exact_duplicates: true
+
+# Catalytic domain confirmation. A sequence must carry both nuclease domains
+# to count as a Cas9 rather than a distant RuvC-only relative.
+domains:
+  require: [RuvC, HNH]
+  hmm_evalue: 1.0e-3
+  # Pfam accessions, verify against the Pfam release recorded in PROJECT_LOG.md
+  hmm_profiles:
+    RuvC: PF18541
+    HNH: PF01844
+
+# Growth-temperature binning. These are the control-token classes, not
+# decoding settings. Edges are in degrees Celsius, upper-exclusive.
+growth_temperature:
+  bins:
+    - {name: meso,  min: -Infinity, max: 45}
+    - {name: thermo, min: 45,       max: 70}
+    - {name: hyper,  min: 70,       max: Infinity}
+  min_per_bin: 200          # Gate 1 fails below this in any bin
+  require_crosscheck: false # true restricts training to ogt_verified rows
+  crosscheck_sample_size: 200
+  crosscheck_tolerance_c: 5.0   # agreement if |ogt_a - ogt_b| <= this
+
+# Cluster-level splitting. Splitting by sequence would leak near-duplicate
+# homologs across splits; splitting by cluster is what makes the test set mean
+# anything.
+cluster:
+  tool: mmseqs2
+  min_seq_id: 0.45          # 40-50% per the brief
+  coverage: 0.80
+  cov_mode: 0
+  cluster_mode: 0
+
+split:
+  fractions: {train: 0.80, val: 0.10, test: 0.10}
+  # A whole subfamily is held out so the test set measures generalization to
+  # unseen Cas9 types, not interpolation within known ones.
+  holdout_subfamily: II-C
+  # Natural thermophilic Cas9s kept out of training to serve as positive
+  # controls at evaluation time.
+  holdout_positive_controls: true
+  positive_controls: [GeoCas9, ThermoCas9]
+
+# Leakage gate. 06_leakage_test.py exits non-zero if any test sequence is this
+# similar to any training sequence. Training must not start until it passes.
+leakage:
+  max_identity_to_train: 0.45
+  alignment_coverage: 0.80
+  fail_on_violation: true
