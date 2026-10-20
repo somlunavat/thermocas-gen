@@ -1,0 +1,84 @@
+# Stage A: broad temperature-labeled protein pre-training.
+#
+# Why this stage exists. The Gate 1 pre-flight found only ~10 independent
+# thermophilic Cas9 clusters in UniProtKB, and showed the scarcity is
+# biological: type II CRISPR-Cas9 is rare in thermophiles and nearly absent
+# from archaea, so no larger database fixes it. Temperature conditioning
+# therefore cannot be learned from Cas9 alone.
+#
+# It can be learned from thermophilic proteins in general. Gosha lists 1,081
+# thermophilic species, 238 of them at >= 70 C, which is on the order of 2M
+# protein sequences. This stage learns the mapping from a growth-temperature
+# token to thermophilic sequence features here, and stage B (configs/train.yaml)
+# then fine-tunes on Cas9 for family identity.
+
+seed: 20261019
+
+paths:
+  species_table: data/processed/broad_species.csv
+  sequences: data/processed/broad_proteins.fasta
+  label_table: data/processed/broad_label_table.csv
+  splits_dir: data/splits/broad
+
+# Species selection. The thermophilic side is the scarce one, so it is taken
+# in full and the mesophilic side is matched to it rather than the reverse;
+# an unbalanced corpus would let the model satisfy the loss by ignoring the
+# conditioning token and always predicting mesophilic features.
+species:
+  require_crosscheck: true    # only OGT labels backed by agreeing collections
+  max_per_bin: 400
+  balance: match_smallest     # match_smallest | max_per_bin | none
+  # Exclude hosts of the Cas9 positive controls so that stage A cannot teach
+  # the model GeoCas9's or ThermoCas9's own genomic context.
+  exclude_positive_control_hosts: true
+
+# Per-species sampling. Whole proteomes would be dominated by a handful of
+# large genomes; a per-species cap keeps the corpus from being a study of
+# whichever organisms are best sequenced.
+sampling:
+  max_proteins_per_species: 500
+  min_length: 60
+  max_length: 1024           # stage A does not need Cas9-length context
+  allowed_residues: ACDEFGHIKLMNPQRSTVWY
+  reviewed_only: false       # too few reviewed entries outside model organisms
+
+# CRITICAL. Stage A must not contain Cas9-family proteins. Without this, the
+# held-out Cas9 test clusters would appear in pre-training and the leakage
+# gate in stage B would be measuring nothing. Screened two ways: by annotation
+# and by alignment against the held-out Cas9 sequences.
+exclude_cas9:
+  enabled: true
+  # Annotation-level screen.
+  name_patterns: [cas9, csn1, csx12, "crispr-associated endonuclease"]
+  pfam_profiles: [PF22702, PF18541, PF13395, PF01844, PF16592, PF16593, PF16595, PF21069, PF22385]
+  # Alignment-level screen against every held-out Cas9 sequence. Deliberately
+  # stricter than the stage B leakage threshold: a pre-training set is large,
+  # so a borderline homolog slipping in is both likelier and harder to notice.
+  max_identity_to_heldout: 0.30
+  alignment_coverage: 0.50
+  fail_on_violation: true
+
+# Clustering and splitting, same principle as the Cas9 stage: split by cluster
+# so near-duplicates cannot straddle train and validation.
+cluster:
+  tool: mmseqs2
+  min_seq_id: 0.50
+  coverage: 0.80
+  cov_mode: 0
+  cluster_mode: 0
+
+split:
+  fractions: {train: 0.95, val: 0.05, test: 0.00}
+  # Stage A has no test split: it is not evaluated on its own, it exists to
+  # initialize stage B. All held-out evaluation happens on the Cas9 corpus,
+  # where the controls and the structural metrics live.
+  holdout_subfamily: null
+  holdout_positive_controls: false
+  positive_controls: []
+
+# Stage A gate. Weaker than the Cas9 Gate 1 because this corpus is only a
+# starting point, but the conditioning still has to be learnable: both classes
+# need enough independent clusters for the token to carry signal.
+gate:
+  min_clusters_per_bin: 200
+  min_sequences_per_bin: 20000

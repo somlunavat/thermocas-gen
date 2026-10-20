@@ -315,6 +315,50 @@ scarcity is specific to Cas9, not to thermophilic proteins.
 **Status: Gate 1 fails as configured.** Not changing the config or the
 framing without a decision; options put to the user.
 
+### 2026-10-20 — Decision: two-stage training. Stage A scaffolding added
+
+Decided (user) to take the brief's fallback: learn temperature conditioning on
+a broad corpus of temperature-labeled bacterial proteins, then fine-tune on
+Cas9. Growth-temperature threshold stays at 45 °C; lowering it would have made
+Gate 1 pass on paper by diluting the very contrast the thesis rests on.
+
+**Why this is the right fallback, in one number.** Stage A species selection on
+the real Gosha table yields 400 mesophilic and 400 thermophilic species, and
+the thermophilic side reaches **103 °C** (*Pyrolobus fumarii*). The hottest
+host of any known Cas9 is 60 °C. Stage A therefore contains a hyperthermophilic
+signal that the Cas9 corpus does not and cannot contain, which is precisely the
+information stage B needs and cannot learn for itself.
+
+Corpus estimate: 800 species x up to 500 proteins = at most 400,000 sequences,
+roughly 140 MB of FASTA. Affordable to download and to screen locally.
+
+**Balance is enforced, not incidental.** Gosha holds 13,898 cross-checked
+mesophilic species against 670 thermophilic ones. Sampling proportionally would
+let the model minimize its loss by ignoring the conditioning token and always
+predicting mesophilic features — exactly the failure Gate 2 is designed to
+detect, arriving by way of the data rather than the model. The scarce class is
+taken up to the cap and the abundant one matched to it, and when the abundant
+class is trimmed the best-evidenced OGT labels survive rather than an arbitrary
+sample.
+
+**The hazard this stage introduces, and the guard against it.** A broad
+bacterial corpus naturally contains Cas9 proteins. If a held-out Cas9 test
+cluster appears in stage A, the stage B leakage gate is measuring nothing: the
+model has already seen the test sequence, one stage earlier. `exclude_cas9` in
+`configs/pretrain.yaml` screens by annotation (name patterns plus the nine Cas9
+Pfam models) and by alignment against every held-out Cas9, at a stricter
+threshold than stage B's leakage gate (30% identity over 50% coverage versus
+45% over 80%), because a 400,000-sequence corpus hides a borderline homolog far
+more easily than a 1,000-sequence one.
+
+The two *Geobacillus* positive-control hosts are also excluded from stage A
+species, so pre-training cannot teach the model GeoCas9's or ThermoCas9's own
+genomic context.
+
+Stage A has no test split by design. It is not evaluated on its own; it exists
+to initialize stage B, and all held-out evaluation belongs on the Cas9 corpus
+where the natural controls and the structural metrics live.
+
 ## Decisions
 
 | Date | Decision | Reason |
@@ -324,6 +368,9 @@ framing without a decision; options put to the user.
 | 2026-10-19 | Keep the from-scratch transformer as a labeled weak baseline only | Honest comparison point; not expected to be competitive |
 | 2026-10-19 | Growth-temperature bins: meso < 45 °C, thermo 45–70 °C, hyper > 70 °C | Brief's defaults; set in `configs/data.yaml` and overridable |
 | 2026-10-19 | Hold GeoCas9 and ThermoCas9 out of training as positive controls | Default pending review: a thermophilic Cas9 in the training set would make "shifted toward thermophilic" partly memorization. Flip `holdout_positive_controls` in `configs/data.yaml` to change |
+| 2026-10-20 | Two-stage training: broad temperature-labeled proteins, then Cas9 | ~10 independent thermophilic Cas9 clusters exist; conditioning cannot be learned from Cas9 alone, but stage A reaches 103 °C where Cas9 stops at 60 °C |
+| 2026-10-20 | Keep the thermophilic threshold at 45 °C | Lowering it would pull 37-44 °C mesophiles into the thermophilic class, making Gate 1 pass while making the result meaningless |
+| 2026-10-20 | Screen Cas9 out of stage A by annotation and alignment, stricter than stage B | A held-out Cas9 appearing in pre-training would void the stage B leakage gate silently |
 | 2026-10-20 | Merge thermo and hyper into one thermophilic bin; keep continuous ogt_c and the auxiliary regression head | Gosha holds only 171 cross-checked hyperthermophilic species, so a separate bin could not reach min_per_bin and Gate 1 would have failed on a threshold rather than on the science |
 | 2026-10-20 | Keep clustering and the leakage check independent | Clustering is the mechanism, the gate is the verification; a clustering mistake must not be able to disable its own check |
 | 2026-10-20 | Cross-check OGT within Gosha, on bin agreement rather than absolute spread | The per-collection columns are independent sources, so no second database is needed; spread scales with temperature, so a fixed tolerance rejects genuine thermophiles |
