@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.env
+
+# Tooling / editors
+.idea/
+.vscode/
+.DS_Store
+.ipynb_checkpoints/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Working notes, not part of the project
+docs/
+.claude/
+
+# Large data: re-downloaded, never committed (see PROJECT_LOG.md for versions)
+data/raw/**
+data/processed/**
+!data/raw/.gitkeep
+!data/raw/seeds.fasta
+!data/processed/.gitkeep
+
+# Split assignments and label tables ARE committed for reproducibility.
+!data/splits/**
+
+# Model artifacts
+checkpoints/
+*.ckpt
+*.pt
+*.safetensors
+outputs/
+generated/
+
+# Structure prediction outputs (large)
+*.pdb
+*.cif
+folds/
+
+# Experiment logs
+tb_logs/
+wandb/
+lightning_logs/
+*.log
