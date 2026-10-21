@@ -179,8 +179,42 @@ def check_validation_cadence(
     return cadence
 
 
+class DegenerateControlTokensError(RuntimeError):
+    """The control-token embeddings cannot be told apart from each other."""
+
+
+def verify_control_tokens_are_distinct(model, base_vocab_size: int, n_added: int) -> float:
+    """Return the smallest distance between any two control-token rows, or raise.
+
+    Called after every resize. The rows have to differ for the conditioning to
+    carry any information at all, and the default resize path produced rows
+    that were bit-for-bit identical -- see
+    :func:`extend_embeddings_for_control_tokens`.
+    """
+    if n_added < 2:
+        return float("inf")
+    rows = model.get_input_embeddings().weight.detach()[base_vocab_size:]
+    distances = torch.cdist(rows[None], rows[None])[0]
+    distances.fill_diagonal_(float("inf"))
+    smallest = float(distances.min())
+    reference = float(
+        model.get_input_embeddings().weight.detach()[:base_vocab_size].norm(dim=1).mean()
+    )
+    if smallest < 1e-3 * reference:
+        raise DegenerateControlTokensError(
+            f"the {n_added} control-token embeddings are not distinguishable: the "
+            f"closest pair is {smallest:.3e} apart against a mean pretrained row norm "
+            f"of {reference:.3f}. Conditioning on them would carry no information, "
+            "and Gate 2 would fail for a reason unrelated to temperature."
+        )
+    return smallest
+
+
 def extend_embeddings_for_control_tokens(
-    model, tokenizer: ProteinTokenizer | PretrainedTokenizerAdapter, base_vocab_size: int
+    model,
+    tokenizer: ProteinTokenizer | PretrainedTokenizerAdapter,
+    base_vocab_size: int,
+    seed: int = 0,
 ) -> int:
     """Resize the token embeddings to fit the control tokens.
 
@@ -188,12 +222,61 @@ def extend_embeddings_for_control_tokens(
     under LoRA: a frozen, randomly initialized control-token embedding cannot
     learn to mean anything, and Gate 2 would then fail for a reason that has
     nothing to do with whether temperature conditioning is learnable.
+
+    The rows are initialized here rather than left to transformers, because
+    its default is actively wrong for this checkpoint. ``mean_resizing=True``
+    draws new rows from a multivariate normal fitted to the existing
+    embeddings; ProGen2 has 32 rows of dimension 1536, so the 1536x1536
+    covariance is estimated from 32 samples and is rank-deficient by a factor
+    of 48. The draw collapses to the mean, and the result was measured: the
+    unconditional, meso and thermo rows came out bit-for-bit identical, cosine
+    similarity 1.000000.
+
+    That made the growth-temperature token carry exactly zero information, and
+    made label dropout a no-op since the unconditional token was the same
+    vector as both bin tokens. A 2-step smoke run duly reported validation
+    perplexity of 4.3283 with the correct token and 4.3283 with every one of
+    five shuffles. The rows are trainable and would eventually have separated,
+    so this would have surfaced as conditioning that is merely slow to learn
+    rather than as a bug.
+
+    So: distinct random rows, scaled to the mean norm of the pretrained rows
+    so the control tokens start on the same scale as the residues, from a
+    seeded generator so a rerun is reproducible.
     """
     target = len(tokenizer)
     if target <= base_vocab_size:
         return 0
-    model.resize_token_embeddings(target)
-    return target - base_vocab_size
+
+    embeddings = model.get_input_embeddings().weight.detach()
+    reference_norm = float(embeddings[:base_vocab_size].norm(dim=1).mean())
+
+    model.resize_token_embeddings(target, mean_resizing=False)
+    n_added = target - base_vocab_size
+
+    generator = torch.Generator().manual_seed(int(seed))
+    with torch.no_grad():
+        new_rows = model.get_input_embeddings().weight[base_vocab_size:]
+        sampled = torch.randn(
+            n_added, new_rows.shape[1], generator=generator, dtype=torch.float32
+        )
+        sampled *= reference_norm / sampled.norm(dim=1, keepdim=True)
+        new_rows.copy_(sampled.to(new_rows.dtype))
+
+        # The output rows for control tokens are never a prediction target --
+        # the prompt is masked out of the loss -- but they do receive logit
+        # mass, so they are kept small rather than left at whatever the resize
+        # produced.
+        head = model.get_output_embeddings()
+        if head is not None and head.weight.shape[0] >= target:
+            head.weight[base_vocab_size:].normal_(
+                mean=0.0, std=0.02, generator=generator
+            )
+            if getattr(head, "bias", None) is not None:
+                head.bias[base_vocab_size:].zero_()
+
+    verify_control_tokens_are_distinct(model, base_vocab_size, n_added)
+    return n_added
 
 
 class ConditionedProteinLM:
@@ -307,7 +390,7 @@ def build_lightning_module(
             self.backbone = load_progen2(checkpoint)
             base_vocab = self.backbone.get_input_embeddings().weight.shape[0]
             self.added_rows = extend_embeddings_for_control_tokens(
-                self.backbone, tokenizer, base_vocab
+                self.backbone, tokenizer, base_vocab, seed=int(train_cfg["seed"])
             )
 
             lora = LoraSettings.from_config(section)

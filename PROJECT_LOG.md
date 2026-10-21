@@ -685,6 +685,93 @@ no label, or missing sequence. Vocabulary 35 tokens (32 from the checkpoint
 plus unconditional, meso, thermo).
 
 
+### 2026-10-21 — The control tokens were all the same vector
+
+The first training steps ever run produced a Gate 2 report that read:
+
+    perplexity with the correct growth-temperature token: 4.3283
+    perplexity with shuffled tokens: 4.3283 (mean of 5)
+    individual shuffles: 4.3283, 4.3283, 4.3283, 4.3283, 4.3283
+
+Identical to four decimals across five independent shuffles is not a weak
+signal, it is no signal. The obvious explanation — two training steps is not
+enough to learn anything — does not fit: an untrained-but-distinct token still
+changes the forward pass. And the shuffles were not vacuous; the assignments
+at the evaluated indices genuinely differed from the true labels, which was
+checked before looking further.
+
+Working inward: the dataset emits the right control token under override, the
+attention mask covers it, the loss masks it. The model was the problem, and
+specifically the resize:
+
+    meso(33) vs thermo(34)    L2 = 0.0000    cosine = 1.000000
+
+`resize_token_embeddings` defaults to `mean_resizing=True`, which draws new
+rows from a multivariate normal fitted to the existing embeddings. ProGen2 has
+32 rows of dimension 1536, so a 1536x1536 covariance is estimated from 32
+samples — rank-deficient by a factor of 48 — and the draw collapses to the
+mean. All three new rows came out bit-for-bit identical.
+
+So `<temp:meso>`, `<temp:thermo>` and `<temp:any>` were one token wearing three
+names. The growth-temperature label carried zero information, and label
+dropout was a no-op because the unconditional token was the same vector as
+both bin tokens.
+
+What makes this the most dangerous bug in the project so far is that the rows
+are trainable (`modules_to_save=["wte", "lm_head"]`), so they would have
+slowly separated under gradient. It would not have crashed and it would not
+have stayed at zero. It would have looked like conditioning that is somewhat
+hard to learn — and that is exactly the finding the paper is about. A marginal
+Gate 2 result would have been read as a fact about temperature conditioning in
+protein language models rather than as a fact about an initializer.
+
+The rows are now initialized explicitly: distinct, drawn from a seeded
+generator, scaled to the mean norm of the pretrained rows (1.0545) so the
+control tokens start on the residues' scale. Measured after the fix: pairwise
+L2 ~1.50 at near-zero cosine, and switching the token moves the residue logits
+by 0.62 against 2.3e-05 before.
+
+`verify_control_tokens_are_distinct` now runs after every resize and raises
+rather than warning, and a test asserts that the default resize path *is*
+degenerate, so the fix cannot be mistaken for a stylistic preference and
+quietly reverted.
+
+### 2026-10-21 — Measured memory: 19 GB, not 1.5 GB
+
+The 2-step stage A run was measured while it ran, on the 16 GB Mac:
+
+| Measure | Value |
+| --- | --- |
+| Process footprint | 19 GB (peak 17 GB resident) |
+| of which MPS allocator (IOAccelerator) | 15 GB |
+| of which CPU side | 2.8 GB |
+| Swap in use | 18.5 GB of 19.4 GB |
+
+The estimate in `10_smoke_train.py` was 1.5 GB at bf16 with gradient
+checkpointing and 3.9 GB at fp32 without. The measurement is ~5x the worse of
+those, and the recorded caveat names the reason: the estimate counts hidden
+states only and excludes attention matrices. Two multipliers apply here.
+First, `mps` has no bf16 autocast, so `resolve_precision` correctly fell back
+to `32-true` and every activation is fp32. Second, ProGen2's attention
+materializes the full L x L matrix and makes several copies of it per layer
+(fp32 cast, `torch.where`, softmax, dropout) — about 340 MB per layer at 1,027
+tokens, and the MPS caching allocator does not return memory, so the
+high-water mark accumulates.
+
+Consequences, in order of value:
+
+1. The earlier "~20 s/sequence, ~74 days locally" figure measured swap
+   thrashing, not compute. It is not a compute estimate and should not be
+   quoted as one.
+2. Replacing ProGen2's hand-rolled attention with
+   `scaled_dot_product_attention` in the vendored code is the single highest
+   value change for fitting a 16 GB GPU, because it stops the L x L matrix
+   being materialized at all.
+3. Local runs are for plumbing only, at a capped sequence length. Full-length
+   anything belongs on the cloud GPU, and the memory figures there must be
+   measured rather than estimated before the training schedule is planned.
+
+
 ## Decisions
 
 | Date | Decision | Reason |
@@ -705,6 +792,7 @@ plus unconditional, meso, thermo).
 | 2026-10-21 | Vendor ProGen2's model code at a pinned revision rather than pin transformers 4.x or monkeypatch remote code | The 4.x line does not support Python 3.14, so the pin would extend to the interpreter; three accumulating runtime patches against a file fetched at import time is worse than one copy in the repository |
 | 2026-10-21 | Verify loaded weights against the checkpoint file on every load | A clean loading report is not evidence: transformers 5.x re-initialized all 221 tensors and reported nothing |
 | 2026-10-21 | No GenerationMixin on the vendored model; sampling uses the project's own loop | ProGen2 carries the legacy tuple key/value cache, which 5.x's generate() does not produce. Classifier-free-guidance-style sampling needs two forward passes per step anyway, which generate() does not do |
+| 2026-10-21 | Initialize control-token embeddings explicitly, and verify they are distinct | transformers' mean_resizing draw is rank-deficient for a 32x1536 embedding and produced three identical rows; the rows are trainable, so this would have read as "conditioning is hard to learn" rather than as a bug |
 | 2026-10-19 | Homolog search runs on a cloud machine, not locally | 16 GB unified memory measured on this Mac; a UniRef50 DIAMOND index does not fit comfortably alongside the OS. Local runs use a subset for smoke-testing only |
 
 ## Environment

@@ -265,3 +265,118 @@ class TestStageCheckpointLoading:
         }
         with pytest.raises(ValueError, match="missing key"):
             load_stage_checkpoint(module, partial)
+
+
+class TestControlTokenInitialization:
+    """The control-token rows have to be distinguishable from each other.
+
+    transformers' default resize path (`mean_resizing=True`) draws new rows
+    from a multivariate normal fitted to the existing embeddings. ProGen2 has
+    32 rows of dimension 1536, so the covariance is estimated from 48x fewer
+    samples than dimensions, the draw collapses to the mean, and the new rows
+    come out bit-for-bit identical -- measured on the real checkpoint at
+    cosine similarity 1.000000. The growth-temperature token then carries no
+    information and label dropout is a no-op.
+    """
+
+    @staticmethod
+    def model(embed_dim: int = 64):
+        from thermocas.model.progen2 import ProGenConfig, ProGenForCausalLM
+
+        return ProGenForCausalLM(
+            ProGenConfig(
+                vocab_size_emb=32,
+                vocab_size_lm_head=32,
+                n_positions=32,
+                embed_dim=embed_dim,
+                n_layer=1,
+                n_head=4,
+                rotary_dim=8,
+            )
+        )
+
+    @staticmethod
+    def tokenizer():
+        from tests.test_pretrained_tokenizer import FakeBaseTokenizer
+        from thermocas.model.tokenizer import PretrainedTokenizerAdapter
+
+        return PretrainedTokenizerAdapter(
+            FakeBaseTokenizer(), ["meso", "thermo"], base_vocab_size=32
+        )
+
+    def test_the_default_resize_path_is_degenerate(self):
+        """Documents the trap, so the fix is not mistaken for a preference."""
+        model = self.model()
+        model.resize_token_embeddings(35)
+        rows = model.get_input_embeddings().weight.detach()
+        assert torch.allclose(rows[33], rows[34], atol=1e-6)
+
+    def test_control_rows_are_distinct_after_extension(self):
+        from thermocas.model.lit_model import extend_embeddings_for_control_tokens
+
+        model = self.model()
+        added = extend_embeddings_for_control_tokens(model, self.tokenizer(), 32, seed=7)
+        assert added == 3
+        rows = model.get_input_embeddings().weight.detach()
+        for i, j in [(32, 33), (32, 34), (33, 34)]:
+            assert float((rows[i] - rows[j]).norm()) > 0.1
+
+    def test_control_rows_match_the_pretrained_scale(self):
+        from thermocas.model.lit_model import extend_embeddings_for_control_tokens
+
+        model = self.model()
+        pretrained_norm = float(
+            model.get_input_embeddings().weight.detach()[:32].norm(dim=1).mean()
+        )
+        extend_embeddings_for_control_tokens(model, self.tokenizer(), 32, seed=7)
+        rows = model.get_input_embeddings().weight.detach()[32:]
+        assert torch.allclose(
+            rows.norm(dim=1), torch.full((3,), pretrained_norm), rtol=1e-4
+        )
+
+    def test_initialization_is_reproducible_from_the_seed(self):
+        from thermocas.model.lit_model import extend_embeddings_for_control_tokens
+
+        first, second = self.model(), self.model()
+        # Same starting embeddings, as two loads of one checkpoint would give:
+        # the row scale is derived from the pretrained rows, so two models with
+        # different random inits are legitimately not comparable.
+        second.get_input_embeddings().weight.data.copy_(
+            first.get_input_embeddings().weight.data
+        )
+        extend_embeddings_for_control_tokens(first, self.tokenizer(), 32, seed=7)
+        extend_embeddings_for_control_tokens(second, self.tokenizer(), 32, seed=7)
+        assert torch.equal(
+            first.get_input_embeddings().weight[32:],
+            second.get_input_embeddings().weight[32:],
+        )
+
+    def test_switching_the_token_changes_the_residue_logits(self):
+        """The end-to-end property. 2.3e-05 was the broken value."""
+        from thermocas.model.lit_model import extend_embeddings_for_control_tokens
+
+        model = self.model()
+        extend_embeddings_for_control_tokens(model, self.tokenizer(), 32, seed=7)
+        model.eval()
+        with torch.no_grad():
+            meso = model(torch.tensor([[33, 3, 16, 5, 14, 9]])).logits[:, 1:]
+            thermo = model(torch.tensor([[34, 3, 16, 5, 14, 9]])).logits[:, 1:]
+        assert float((meso - thermo).abs().max()) > 1e-2
+
+    def test_degenerate_rows_are_refused(self):
+        from thermocas.model.lit_model import (
+            DegenerateControlTokensError,
+            verify_control_tokens_are_distinct,
+        )
+
+        model = self.model()
+        model.resize_token_embeddings(35)  # the degenerate default path
+        with pytest.raises(DegenerateControlTokensError, match="not distinguishable"):
+            verify_control_tokens_are_distinct(model, 32, 3)
+
+    def test_a_single_added_row_cannot_be_degenerate(self):
+        from thermocas.model.lit_model import verify_control_tokens_are_distinct
+
+        model = self.model()
+        model.resize_token_embeddings(33)
+        assert verify_control_tokens_are_distinct(model, 32, 1) == float("inf")
