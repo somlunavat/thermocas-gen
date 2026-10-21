@@ -585,6 +585,106 @@ cross-check written for its own sake. Verifying two artifacts agree, rather
 than trusting whichever was written last, is what made a silent one-row
 corruption visible.
 
+### 2026-10-21 — ProGen2 under transformers 5.x: four failures, one of them silent
+
+Getting the checkpoint to load took four fixes. The order they were found in
+matters, because each one hid the next.
+
+**1. It did not load at all.** `AttributeError: 'ProGenForCausalLM' object has
+no attribute 'all_tied_weights_keys'`. ProGen2's published code is remote code
+written for transformers 4.40; it calls the 4.x `init_weights()` rather than
+5.x's `post_init()`, which is where that mapping is populated.
+
+**2. It loaded but could not run a forward pass.** `RuntimeError: Tensor on
+device meta is not on the expected device cpu`. Its non-persistent
+causal-mask buffer and its `scale_attn` tensor are built during 5.x's
+meta-device initialization, and nothing in the checkpoint materializes them.
+
+**3. `PreTrainedModel.get_head_mask` no longer exists** in 5.x, and the
+forward pass calls it.
+
+At this point the working fix was three runtime monkeypatches against a file
+downloaded at import time. That was the wrong foundation, so the model code
+was vendored into `thermocas/model/progen2/` at a pinned revision, with every
+change marked `THERMOCAS:` and the provenance and licence recorded in the
+package docstring. Pinning transformers 4.x was the alternative, and was
+rejected because the 4.x line does not support Python 3.14 — the pin would
+have extended to the interpreter.
+
+**4. Then the weights were silently discarded.** The vendored copy loaded all
+221 tensors, reported no missing keys, no mismatched keys, and no warnings —
+and every parameter was random. Perplexity on an SpCas9 fragment was 44.5
+against 46.3 on the same residues shuffled: a 765M-parameter model that could
+not tell a protein from a bag of amino acids.
+
+The cause is worth stating precisely, because it is a trap for anyone
+vendoring a model. transformers 5.x applies weight initialization to every
+module *after* loading the checkpoint, and relies on each initializer to check
+the parameter's `_is_hf_initialized` flag and leave loaded weights alone. The
+flag-aware initializers live in `transformers.initialization`. ProGen2 writes
+in place through `module.weight.data.normal_()`, which ignores the flag.
+transformers does carry a fallback that skips already-initialized modules
+wholesale — but it is applied only when `is_remote_code()` is true, and that
+is `cls._auto_class is not None`. **Vendoring the file made the fallback stop
+applying.** The fix was to route `_init_weights` through
+`transformers.initialization`.
+
+After the fix, the same comparison reads 1.19 against 18.44, and greedy
+continuation of the documented prompt `1MEVVIVTGMSGAGK` gives
+`TVAVQSFEDLGYFCVDNLPPTLLPKFLELMKESGGKMNKV`. (The 1.19 is near-memorization:
+SpCas9 is in ProGen2's training data.)
+
+Two guards were added rather than relying on having noticed:
+
+* `load_progen2` compares every loaded tensor against the safetensors file on
+  disk and refuses to return a model if any differs. "The weights arrived" and
+  "the weights are still there" turned out to be different claims, and only
+  the second one matters.
+* It also refuses a model with any tensor left on the meta device, which is
+  failure 2 surfacing at load time instead of deep inside an attention layer.
+
+**Two further defects found while vendoring**, neither of them version drift:
+
+* `lm_head.weight` was listed in `_keys_to_ignore_on_load_missing`. ProGen2's
+  head is an untied `nn.Linear` whose weight *is* in the checkpoint, so that
+  entry meant a lost output layer would have loaded silently as a random one —
+  and under LoRA, with the base weights frozen, it could never be relearned.
+* `supports_gradient_checkpointing` was False and the forward pass only read
+  `config.gradient_checkpointing`, so `gradient_checkpointing_enable()` raised
+  `ValueError` and, had it not, would have had no effect. Stage A's 1.5 GB
+  memory estimate assumes checkpointing is on. It is now a config key
+  (`model.yaml: gradient_checkpointing`) that the module applies explicitly.
+
+Verified: 769,295,431 parameters total, 4,482,596 trainable (0.58%) with LoRA
+r=16 on `qkv_proj`/`out_proj`, the resized embedding and head, and the OGT
+head. Gradient checkpointing confirmed active and differentiable.
+
+### 2026-10-21 — The prompt layout is the tokenizer's to report
+
+The dataset computed its masked prefix as "BOS, plus a control token if
+conditioning is on". That is the from-scratch tokenizer's layout.
+`PretrainedTokenizerAdapter` emits `[TEMP] 1 SEQUENCE [EOS]` — ProGen2's
+direction marker in place of BOS — so the same arithmetic masked the right
+*number* of positions when conditioning was on and the wrong number when it
+was off, leaving the direction marker in the loss.
+
+`Encoded` now carries `prompt_length` and each tokenizer exposes
+`encoding_overhead()`, measured by encoding a single residue rather than
+counted by hand so it cannot drift from `encode()`. The dataset reads both.
+Separately, `11_train.py` now builds the adapter from the configured
+checkpoint rather than the project's own vocabulary, and
+`build_lightning_module` raises on anything else — the residue vocabulary
+belongs to the checkpoint.
+
+### 2026-10-21 — Stage A dry run against the real corpus
+
+`11_train.py --stage a --dry-run` on `broad_proteins_screened.fasta`: 295,035
+training examples and 16,952 validation examples admitted, longest 1,027
+tokens, bins meso=172,558 / thermo=122,477 in train. Zero dropped for length,
+no label, or missing sequence. Vocabulary 35 tokens (32 from the checkpoint
+plus unconditional, meso, thermo).
+
+
 ## Decisions
 
 | Date | Decision | Reason |
@@ -602,6 +702,9 @@ corruption visible.
 | 2026-10-20 | Keep clustering and the leakage check independent | Clustering is the mechanism, the gate is the verification; a clustering mistake must not be able to disable its own check |
 | 2026-10-20 | Cross-check OGT within Gosha, on bin agreement rather than absolute spread | The per-collection columns are independent sources, so no second database is needed; spread scales with temperature, so a fixed tolerance rejects genuine thermophiles |
 | 2026-10-20 | Bound OGT to [-20, 130] °C | Gosha contains single-source values of 230 °C and 187 °C for known mesophiles |
+| 2026-10-21 | Vendor ProGen2's model code at a pinned revision rather than pin transformers 4.x or monkeypatch remote code | The 4.x line does not support Python 3.14, so the pin would extend to the interpreter; three accumulating runtime patches against a file fetched at import time is worse than one copy in the repository |
+| 2026-10-21 | Verify loaded weights against the checkpoint file on every load | A clean loading report is not evidence: transformers 5.x re-initialized all 221 tensors and reported nothing |
+| 2026-10-21 | No GenerationMixin on the vendored model; sampling uses the project's own loop | ProGen2 carries the legacy tuple key/value cache, which 5.x's generate() does not produce. Classifier-free-guidance-style sampling needs two forward passes per step anyway, which generate() does not do |
 | 2026-10-19 | Homolog search runs on a cloud machine, not locally | 16 GB unified memory measured on this Mac; a UniRef50 DIAMOND index does not fit comfortably alongside the OS. Local runs use a subset for smoke-testing only |
 
 ## Environment
@@ -662,6 +765,10 @@ verification.
 | 2026-10-19 | pytorch | 2.12.0 |
 | 2026-10-19 | pyyaml | 6.0.3 |
 | 2026-10-19 | mps backend | available, fp32 only |
+| 2026-10-21 | transformers | 5.10.2 |
+| 2026-10-21 | peft | 0.21.2 |
+| 2026-10-21 | lightning | 2.6.6 |
+| 2026-10-21 | ProGen2 (vendored) | hugohrban/progen2-base @ 71228cbfca5960f9fab5775f378bba3673af9f00 |
 
 ## Seeds
 
