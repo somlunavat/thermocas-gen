@@ -266,3 +266,66 @@ class TestCollate:
         assert batch["ogt_c"].tolist() == [37.0, 60.0]
         assert batch["temp_bin"] == ["meso", "thermo"]
         assert batch["seq_id"] == ["a", "b"]
+
+
+class TestPromptLayoutComesFromTheTokenizer:
+    """The dataset must not assume where the residues start.
+
+    It previously computed the masked prefix as "BOS plus maybe a control
+    token", which is the from-scratch tokenizer's layout. The pretrained
+    adapter emits ``[TEMP] 1 SEQUENCE [EOS]`` -- ProGen2's direction marker in
+    place of BOS -- so the same arithmetic left the direction marker in the
+    loss and, with conditioning off, trained the model to predict it from
+    nothing. Both numbers now come from the tokenizer.
+    """
+
+    @staticmethod
+    def adapter():
+        from tests.test_pretrained_tokenizer import FakeBaseTokenizer
+        from thermocas.model.tokenizer import PretrainedTokenizerAdapter
+
+        return PretrainedTokenizerAdapter(FakeBaseTokenizer(), BINS, base_vocab_size=32)
+
+    def test_adapter_prompt_is_masked_through_the_direction_marker(self):
+        adapter = self.adapter()
+        dataset = build(adapter, {"a": "MAKE"}, [label_row("a")])
+        item = dataset[0]
+        ids, labels = item["input_ids"], item["labels"]
+
+        assert ids[0].item() == adapter.control_id("meso")
+        assert ids[1].item() == adapter.base.token_to_id("1")
+        assert labels[0].item() == IGNORE_INDEX  # control token
+        assert labels[1].item() == IGNORE_INDEX  # direction marker
+        assert labels[2].item() == ids[2].item() != IGNORE_INDEX  # first residue
+
+    def test_unconditioned_adapter_masks_only_the_direction_marker(self):
+        adapter = self.adapter()
+        dataset = build(
+            adapter, {"a": "MAKE"}, [label_row("a")], use_growth_temp_token=False
+        )
+        item = dataset[0]
+        assert item["input_ids"][0].item() == adapter.base.token_to_id("1")
+        assert item["labels"][0].item() == IGNORE_INDEX
+        assert item["labels"][1].item() != IGNORE_INDEX
+
+    def test_length_budget_uses_the_tokenizer_overhead(self):
+        # [TEMP] 1 ... [EOS] is three non-residue tokens, so a max_length of
+        # 8 admits five residues and rejects six.
+        adapter = self.adapter()
+        assert adapter.encoding_overhead() == 3
+        dataset = build(
+            adapter, {"a": "MAKER", "b": "MAKERS"}, [label_row("a"), label_row("b")],
+            max_length=8,
+        )
+        assert dataset.report.kept == 1
+        assert dataset.report.dropped_too_long == 1
+        assert len(dataset[0]["input_ids"]) == 8
+
+    def test_scratch_tokenizer_keeps_its_own_layout(self, tok):
+        assert tok.encoding_overhead() == 3           # BOS + control + EOS
+        assert tok.encoding_overhead(False) == 2      # BOS + EOS
+        dataset = build(tok, {"a": "MAKE"}, [label_row("a")])
+        labels = dataset[0]["labels"]
+        assert labels[0].item() == IGNORE_INDEX       # BOS
+        assert labels[1].item() == IGNORE_INDEX       # control token
+        assert labels[2].item() != IGNORE_INDEX

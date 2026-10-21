@@ -37,10 +37,21 @@ class Encoded:
     ``control_index`` is where the growth-temperature token sits, so training
     can swap it for the unconditional token (label dropout) or a different bin
     (the Gate 2 shuffled-token check) without re-tokenizing the sequence.
+
+    ``prompt_length`` is how many leading tokens precede the first residue.
+    The dataset masks exactly that many positions out of the loss, and it is
+    reported by the tokenizer rather than inferred by the caller because the
+    two tokenizers lay the prompt out differently: ``ProteinTokenizer`` emits
+    ``[BOS] [TEMP]``, while :class:`PretrainedTokenizerAdapter` emits
+    ``[TEMP] 1`` -- ProGen2 wants its direction marker, not a BOS token. A
+    caller that assumed one layout would mask the wrong positions, and
+    training the model to predict its own control token is precisely the
+    shortcut Gate 2 is designed to rule out.
     """
 
     ids: list[int]
     control_index: int | None
+    prompt_length: int = 0
 
 
 class ProteinTokenizer:
@@ -145,12 +156,23 @@ class ProteinTokenizer:
             control_index = len(ids)
             ids.append(self.control_id(growth_temp_bin))
 
+        prompt_length = len(ids)
+
         ids.extend(self.stoi[residue] for residue in seq)
 
         if add_eos:
             ids.append(self.eos_id)
 
-        return Encoded(ids=ids, control_index=control_index)
+        return Encoded(ids=ids, control_index=control_index, prompt_length=prompt_length)
+
+    def encoding_overhead(self, use_growth_temp_token: bool = True) -> int:
+        """Non-residue tokens an encoding adds, for length budgeting.
+
+        Measured by encoding a single residue rather than counted by hand, so
+        it cannot drift away from :meth:`encode`.
+        """
+        bin_name = self.growth_temp_bins[0] if use_growth_temp_token else None
+        return len(self.encode("A", growth_temp_bin=bin_name).ids) - 1
 
     def decode(self, ids: list[int], residues_only: bool = True) -> str:
         """Render token ids back to a sequence.
@@ -309,11 +331,22 @@ class PretrainedTokenizerAdapter:
             ids.append(self.control_id(growth_temp_bin))
 
         ids.append(self._direction_id)
+        prompt_length = len(ids)
+
         ids.extend(self.base.encode(seq, add_special_tokens=False).ids)
 
         if add_eos:
             ids.append(self.eos_id)
-        return Encoded(ids=ids, control_index=control_index)
+        return Encoded(ids=ids, control_index=control_index, prompt_length=prompt_length)
+
+    def encoding_overhead(self, use_growth_temp_token: bool = True) -> int:
+        """Non-residue tokens an encoding adds, for length budgeting.
+
+        Measured by encoding a single residue rather than counted by hand, so
+        it cannot drift away from :meth:`encode`.
+        """
+        bin_name = self.growth_temp_bins[0] if use_growth_temp_token else None
+        return len(self.encode("A", growth_temp_bin=bin_name).ids) - 1
 
     def decode(self, ids: list[int], residues_only: bool = True) -> str:
         if residues_only:

@@ -32,7 +32,7 @@ import torch
 from torch.utils.data import Dataset
 
 from thermocas.data.fasta import read_fasta
-from thermocas.model.tokenizer import ProteinTokenizer
+from thermocas.model.tokenizer import PretrainedTokenizerAdapter, ProteinTokenizer
 
 IGNORE_INDEX = -100
 
@@ -94,7 +94,7 @@ class ConditionedProteinDataset(Dataset):
         self,
         sequences: dict[str, str],
         labels: list[dict[str, str]],
-        tokenizer: ProteinTokenizer,
+        tokenizer: ProteinTokenizer | PretrainedTokenizerAdapter,
         max_length: int,
         split: str | None = None,
         on_too_long: str = "drop_and_report",
@@ -118,6 +118,7 @@ class ConditionedProteinDataset(Dataset):
         self.dropout = float(growth_temp_token_dropout)
         self.use_growth_temp_token = use_growth_temp_token
         self.seed = int(seed)
+        self.overhead = tokenizer.encoding_overhead(use_growth_temp_token)
         self.report = DatasetReport(rows_in_table=len(labels), sequences_in_fasta=len(sequences))
 
         self.examples: list[dict[str, object]] = []
@@ -139,8 +140,10 @@ class ConditionedProteinDataset(Dataset):
                 self.report.dropped_unverified += 1
                 continue
 
-            # Budget: BOS + control token + residues + EOS.
-            overhead = 2 + (1 if use_growth_temp_token else 0)
+            # The tokenizer reports its own overhead. Hardcoding it here as
+            # "BOS + control + EOS" was wrong for the pretrained adapter,
+            # which emits [TEMP] and ProGen2's direction marker but no BOS.
+            overhead = self.overhead
             budget = self.max_length - overhead
             if budget <= 0:
                 raise ValueError(
@@ -216,9 +219,11 @@ class ConditionedProteinDataset(Dataset):
 
         ids = encoded.ids
         # Mask the prompt so the loss is computed on residues and EOS only.
+        # The tokenizer reports how many leading tokens that is; the adapter
+        # has two (control token, direction marker) where the from-scratch
+        # tokenizer has BOS plus control.
         labels = list(ids)
-        prompt_length = 1 + (1 if control_index is not None else 0)
-        for position in range(min(prompt_length, len(labels))):
+        for position in range(min(encoded.prompt_length, len(labels))):
             labels[position] = IGNORE_INDEX
 
         return {

@@ -165,3 +165,35 @@ class TestAgainstRealCheckpoint:
         assert len(adapter) == 35
         assert adapter.base.token_to_id("A") == 5
         assert adapter.decode(adapter.encode("MEVVIVTGMSGAGK").ids) == "MEVVIVTGMSGAGK"
+
+
+class TestPromptLengthAndOverhead:
+    """What the dataset needs in order not to guess the prompt layout."""
+
+    def test_prompt_length_covers_control_token_and_direction_marker(self):
+        adapter = PretrainedTokenizerAdapter(FakeBaseTokenizer(), BINS, base_vocab_size=32)
+        assert adapter.encode("MAK", growth_temp_bin="thermo").prompt_length == 2
+        assert adapter.encode("MAK").prompt_length == 1
+
+    def test_overhead_is_measured_from_encode_not_counted_by_hand(self):
+        adapter = PretrainedTokenizerAdapter(FakeBaseTokenizer(), BINS, base_vocab_size=32)
+        for use_token in (True, False):
+            bin_name = "meso" if use_token else None
+            encoded = adapter.encode("MAKE", growth_temp_bin=bin_name)
+            assert adapter.encoding_overhead(use_token) == len(encoded.ids) - 4
+
+    def test_scratch_tokenizer_reports_its_own_layout(self):
+        tokenizer = ProteinTokenizer(BINS)
+        assert tokenizer.encode("MAK", growth_temp_bin="thermo").prompt_length == 2
+        assert tokenizer.encode("MAK", add_bos=False).prompt_length == 0
+        assert tokenizer.encoding_overhead() == 3
+        assert tokenizer.encoding_overhead(False) == 2
+
+    def test_the_two_tokenizers_disagree_about_the_layout(self):
+        """Documents why the dataset cannot hardcode either one."""
+        adapter = PretrainedTokenizerAdapter(FakeBaseTokenizer(), BINS, base_vocab_size=32)
+        tokenizer = ProteinTokenizer(BINS)
+        first_adapter = adapter.encode("MAK", growth_temp_bin="meso").ids[0]
+        first_scratch = tokenizer.encode("MAK", growth_temp_bin="meso").ids[0]
+        assert first_adapter == adapter.control_id("meso")   # control token leads
+        assert first_scratch == tokenizer.bos_id             # BOS leads
