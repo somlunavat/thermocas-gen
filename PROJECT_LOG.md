@@ -501,6 +501,59 @@ Three observations that matter for stage B:
    selection, because thermophiles have smaller proteomes. Far better than the
    20:1 species imbalance, but worth watching at Gate 2.
 
+### 2026-10-20 — Gate 2 pre-flight: the thermophilic signal is present
+
+The stage A gate counts clusters and sequences; it does not say the corpus
+contains the signal the conditioning token has to explain. Checked that
+directly before spending GPU time (`scripts/12_signal_check.py`), using the
+Zeldovich et al. 2007 composition indicators.
+
+**Corpus-wide**, all three move as thermophily predicts:
+
+| Group | meso | thermo | delta | expected |
+| --- | --- | --- | --- | --- |
+| IVYWREL | 39.256% | 42.681% | +3.425% | up, OK |
+| charged (DEKR) | 23.539% | 25.495% | +1.957% | up, OK |
+| polar (STNQ) | 18.076% | 15.725% | -2.352% | down, OK |
+
+That alone is weak evidence, because it is confounded with phylogeny:
+thermophiles are a different set of organisms with different proteome-wide
+composition, so the difference could be taxonomic rather than thermal.
+
+**Within-cluster, controlling for protein family**, the signal survives. Of
+55,858 clusters, 6,111 (10.9%) contain both classes — homologous proteins from
+organisms at different growth temperatures:
+
+| Group | mean shift | median | families shifting as predicted |
+| --- | --- | --- | --- |
+| IVYWREL | +1.743% | +1.700% | **81.5%** |
+| charged | +0.638% | +0.600% | 65.9% |
+| polar | -1.657% | -1.587% | **81.4%** |
+
+Chance is 50%. IVYWREL and polar at ~81% is a real effect independent of
+family identity, which is what makes the conditioning learnable as thermal
+adaptation rather than as family memorization.
+
+Three caveats worth carrying into Gate 2:
+
+1. **Roughly half the corpus-wide signal is phylogenetic.** Within-family
+   IVYWREL shift is +1.74% against +3.43% corpus-wide, so about half the
+   apparent effect is composition differences between organisms rather than
+   thermal adaptation of individual proteins. The model will learn both; only
+   the former is expected to transfer cleanly to a single family like Cas9.
+2. **Effect sizes are modest.** A +1.74% within-family composition shift is a
+   real but small signal, and Gate 2 asks for a 2% relative perplexity gain.
+   Gate 2 could be marginal rather than decisive, and a narrow pass should not
+   be over-read.
+3. **Charged residues are the weakest of the three** at 65.9% consistency
+   against ~81% for the other two. Salt-bridge content is a structural property
+   that composition alone captures poorly, so this is expected, but it means
+   charge-based evaluation metrics will be noisier than composition ones.
+
+Because the cluster-level split puts validation clusters outside training, Gate
+2 cannot be passed by memorizing cluster identity: the model has to generalize
+from sequence features to unseen families. That makes the gate a real test.
+
 ## Decisions
 
 | Date | Decision | Reason |
