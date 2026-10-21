@@ -19,6 +19,7 @@ from thermocas.model.lit_model import (
     LoraSettings,
     OgtHead,
     assert_context_fits,
+    check_validation_cadence,
 )
 
 
@@ -168,3 +169,51 @@ class TestLoraSettings:
             ablation.alpha,
             ablation.target_modules,
         )
+
+
+class TestValidationCadence:
+    """Guards a failure that produced no error and no checkpoint.
+
+    With validation left at Lightning's per-epoch default and training bounded
+    by max_steps, ModelCheckpoint monitors a metric that is never logged. It
+    does not raise: it saves nothing. Verified on a tiny model, where
+    save_top_k=3 with monitor="val_loss" left a best score of None.
+    """
+
+    def test_matching_cadence_is_accepted(self):
+        # 8,000 training batches at accumulate 16 is 500 optimizer steps.
+        assert check_validation_cadence(8000, 16, 500, "val_loss") == 500
+
+    def test_batches_must_divide_into_whole_steps(self):
+        with pytest.raises(ValueError, match="multiple of"):
+            check_validation_cadence(8001, 16, 500, "val_loss")
+
+    def test_cadence_mismatch_is_refused(self):
+        # The trap: 512 batches reads like "every 512 steps" but is 32.
+        with pytest.raises(ValueError, match="silently save nothing"):
+            check_validation_cadence(512, 16, 500, "val_loss")
+
+    def test_the_mismatch_message_names_the_monitored_metric(self):
+        with pytest.raises(ValueError, match="val_ppl"):
+            check_validation_cadence(1600, 16, 500, "val_ppl")
+
+    def test_no_accumulation_means_batches_equal_steps(self):
+        assert check_validation_cadence(500, 1, 500, "val_loss") == 500
+
+    @pytest.mark.parametrize("bad", [0, -16])
+    def test_nonsense_intervals_are_refused(self, bad):
+        with pytest.raises(ValueError):
+            check_validation_cadence(bad, 16, 500, "val_loss")
+        with pytest.raises(ValueError):
+            check_validation_cadence(8000, bad, 500, "val_loss")
+
+
+class TestConfiguredCadenceAgrees:
+    def test_the_shipped_config_passes_its_own_guard(self):
+        cfg = Config.load("train")
+        assert check_validation_cadence(
+            int(cfg["validation/check_interval_batches"]),
+            int(cfg["batch/accumulate_grad_batches"]),
+            int(cfg["checkpoint/every_n_steps"]),
+            str(cfg["checkpoint/monitor"]),
+        ) == int(cfg["checkpoint/every_n_steps"])

@@ -234,7 +234,10 @@ def main() -> int:
     from lightning.pytorch.loggers import CSVLogger
     from torch.utils.data import DataLoader
 
-    from thermocas.model.lit_model import build_lightning_module
+    from thermocas.model.lit_model import (
+        build_lightning_module,
+        check_validation_cadence,
+    )
 
     ogt_values = [
         float(e["ogt_c"]) for e in datasets["train"].examples if e["ogt_c"] == e["ogt_c"]
@@ -278,6 +281,28 @@ def main() -> int:
         )
 
     checkpoint_dir = Path(str(data_cfg["checkpoint/dir"])) / f"stage_{args.stage}"
+
+    # The checkpoint callback monitors a validation metric, so validation has
+    # to have run by the time it fires. Lightning does not complain when it
+    # has not: it saves nothing and reports no error. An epoch here is ~18,400
+    # steps, so relying on the per-epoch default means a whole run can finish
+    # with no monitored checkpoint.
+    accumulate = int(data_cfg["batch/accumulate_grad_batches"])
+    val_interval_batches = int(data_cfg["validation/check_interval_batches"])
+    checkpoint_every_n_steps = int(data_cfg["checkpoint/every_n_steps"])
+    try:
+        cadence = check_validation_cadence(
+            val_interval_batches,
+            accumulate,
+            checkpoint_every_n_steps,
+            str(data_cfg["checkpoint/monitor"]),
+        )
+    except ValueError as exc:
+        print(f"\n{exc}", file=sys.stderr)
+        return 2
+    print(f"validation: every {cadence} steps on at most "
+          f"{int(data_cfg['validation/limit_batches'])} batches")
+
     trainer = L.Trainer(
         accelerator=spec.accelerator,
         precision=spec.precision,
@@ -285,6 +310,8 @@ def main() -> int:
         accumulate_grad_batches=int(data_cfg["batch/accumulate_grad_batches"]),
         gradient_clip_val=float(data_cfg["optim/grad_clip"]),
         log_every_n_steps=int(data_cfg["logging/log_every_n_steps"]),
+        val_check_interval=val_interval_batches,
+        limit_val_batches=int(data_cfg["validation/limit_batches"]),
         callbacks=[
             ModelCheckpoint(
                 dirpath=checkpoint_dir,

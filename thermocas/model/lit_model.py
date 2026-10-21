@@ -103,6 +103,54 @@ def assert_context_fits(declared_context: int, required_context: int, checkpoint
         )
 
 
+def check_validation_cadence(
+    val_interval_batches: int,
+    accumulate_grad_batches: int,
+    checkpoint_every_n_steps: int,
+    monitor: str,
+) -> int:
+    """Validate that the checkpoint monitor will have a fresh metric.
+
+    Returns the validation cadence in optimizer steps, or raises.
+
+    This exists because of a silent failure rather than a loud one. A stage A
+    epoch is roughly 18,400 optimizer steps and training is bounded by
+    ``max_steps``, so with Lightning's default of validating once per epoch,
+    validation can run nearly never. ``ModelCheckpoint`` then monitors a
+    metric that was never logged -- and it does not raise. Verified on a tiny
+    model: ``save_top_k=3, monitor="val_loss"`` with no validation produced a
+    single unmonitored ``last.ckpt`` and a best score of ``None``. A 20,000
+    step run would have ended with no best checkpoint and no error anywhere.
+
+    ``val_interval_batches`` counts training batches, which is Lightning's
+    unit for ``val_check_interval`` and is not the same as optimizer steps
+    whenever gradients are accumulated.
+    """
+    if accumulate_grad_batches <= 0:
+        raise ValueError(
+            f"accumulate_grad_batches must be positive, got {accumulate_grad_batches}"
+        )
+    if val_interval_batches <= 0:
+        raise ValueError(
+            f"validation check interval must be positive, got {val_interval_batches}"
+        )
+    if val_interval_batches % accumulate_grad_batches != 0:
+        raise ValueError(
+            f"validation/check_interval_batches ({val_interval_batches}) must be a "
+            f"multiple of batch/accumulate_grad_batches ({accumulate_grad_batches}); "
+            "it counts training batches, not optimizer steps"
+        )
+    cadence = val_interval_batches // accumulate_grad_batches
+    if cadence != checkpoint_every_n_steps:
+        raise ValueError(
+            f"validation runs every {cadence} optimizer steps but "
+            f"checkpoint/every_n_steps is {checkpoint_every_n_steps}. "
+            f"ModelCheckpoint(monitor={monitor!r}) would fire with a stale or absent "
+            "metric and silently save nothing."
+        )
+    return cadence
+
+
 def extend_embeddings_for_control_tokens(
     model, tokenizer: ProteinTokenizer | PretrainedTokenizerAdapter, base_vocab_size: int
 ) -> int:

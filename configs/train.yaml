@@ -38,6 +38,27 @@ loss:
   # Weight on the auxiliary OGT regression head, if model.yaml enables it.
   ogt_head_weight: 0.1
 
+# Validation cadence. This is not a tuning knob; it is load-bearing.
+#
+# A stage A epoch is ~18,400 optimizer steps, and training is bounded by
+# max_steps rather than by epochs, so with Lightning's default (validate once
+# per epoch) validation can run nearly never. ModelCheckpoint then monitors a
+# metric that does not exist -- and it does not raise. It silently saves
+# nothing: verified on a tiny model, where save_top_k=3 with monitor=val_loss
+# produced one unmonitored `last.ckpt` and a best score of None. A 20,000-step
+# run would have ended with no best checkpoint and no error.
+#
+# check_interval_batches counts TRAINING BATCHES, not optimizer steps. With
+# accumulate_grad_batches=16, 8,000 batches is 500 optimizer steps, which is
+# deliberately equal to checkpoint/every_n_steps; 11_train.py refuses to start
+# if the two disagree.
+validation:
+  check_interval_batches: 8000
+  # Bounded so a validation pass costs minutes rather than hours: 200 batches
+  # at val_size 2 is 400 sequences. The real Gate 2 evaluation uses the whole
+  # validation split and is separate from this.
+  limit_batches: 200
+
 checkpoint:
   dir: checkpoints
   every_n_steps: 500
