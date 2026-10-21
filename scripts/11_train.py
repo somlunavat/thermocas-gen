@@ -237,6 +237,7 @@ def main() -> int:
     from thermocas.model.lit_model import (
         build_lightning_module,
         check_validation_cadence,
+        load_stage_checkpoint,
     )
 
     ogt_values = [
@@ -268,8 +269,12 @@ def main() -> int:
                 file=sys.stderr,
             )
             return 3
-        module.load_state_dict(state["state_dict"], strict=False)
-        print(f"initialized from {args.init_from}")
+        try:
+            loaded, total = load_stage_checkpoint(module, state["state_dict"])
+        except ValueError as exc:
+            print(f"\n{exc}", file=sys.stderr)
+            return 3
+        print(f"initialized from {args.init_from} ({loaded}/{total} tensors)")
 
     def loader(split: str, shuffle: bool) -> DataLoader:
         return DataLoader(

@@ -217,3 +217,51 @@ class TestConfiguredCadenceAgrees:
             int(cfg["checkpoint/every_n_steps"]),
             str(cfg["checkpoint/monitor"]),
         ) == int(cfg["checkpoint/every_n_steps"])
+
+
+class TestStageCheckpointLoading:
+    """Stage B must not silently start from the pretrained checkpoint.
+
+    The previous call used ``strict=False``, which loads nothing at all when
+    the key names do not line up -- and PEFT renames every module it wraps, so
+    that is an easy mistake to make. Stage B would have reported "initialized
+    from stage A" while being initialized from nothing of the sort.
+    """
+
+    @staticmethod
+    def module():
+        from thermocas.model.lit_model import load_stage_checkpoint  # noqa: F401
+
+        return torch.nn.Sequential(torch.nn.Linear(4, 4), torch.nn.Linear(4, 2))
+
+    def test_a_matching_state_dict_loads(self):
+        from thermocas.model.lit_model import load_stage_checkpoint
+
+        module = self.module()
+        source = self.module()
+        loaded, total = load_stage_checkpoint(module, source.state_dict())
+        assert loaded == total == len(module.state_dict())
+        assert torch.equal(module[0].weight, source[0].weight)
+
+    def test_renamed_keys_are_an_error_not_a_no_op(self):
+        from thermocas.model.lit_model import load_stage_checkpoint
+
+        module = self.module()
+        renamed = {
+            f"base_model.model.{key}": value
+            for key, value in self.module().state_dict().items()
+        }
+        with pytest.raises(ValueError, match="missing key"):
+            load_stage_checkpoint(module, renamed)
+
+    def test_a_partial_state_dict_is_an_error(self):
+        from thermocas.model.lit_model import load_stage_checkpoint
+
+        module = self.module()
+        partial = {
+            key: value
+            for key, value in self.module().state_dict().items()
+            if key.startswith("0.")
+        }
+        with pytest.raises(ValueError, match="missing key"):
+            load_stage_checkpoint(module, partial)

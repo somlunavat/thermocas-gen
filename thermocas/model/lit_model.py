@@ -103,6 +103,34 @@ def assert_context_fits(declared_context: int, required_context: int, checkpoint
         )
 
 
+def load_stage_checkpoint(module, state_dict: dict) -> tuple[int, int]:
+    """Load a stage A state dict into a stage B module, loudly.
+
+    Returns ``(loaded, total)`` parameter-tensor counts.
+
+    ``load_state_dict(..., strict=False)`` was used here, which is a silent
+    no-op when the key names do not line up -- and they are easy to misalign,
+    because PEFT renames every module it wraps. Stage B would then have
+    started from the raw pretrained checkpoint while reporting that it had
+    initialized from stage A, and the whole two-stage design would have been
+    untested. Any missing or unexpected key is therefore an error, not a
+    warning.
+    """
+    result = module.load_state_dict(state_dict, strict=False)
+    missing = list(result.missing_keys)
+    unexpected = list(result.unexpected_keys)
+    if missing or unexpected:
+        raise ValueError(
+            "stage A checkpoint does not match this module: "
+            f"{len(missing)} missing key(s) {missing[:5]}, "
+            f"{len(unexpected)} unexpected key(s) {unexpected[:5]}. "
+            "Loading it anyway would start stage B from the pretrained "
+            "checkpoint while reporting otherwise."
+        )
+    total = len(module.state_dict())
+    return total - len(missing), total
+
+
 def check_validation_cadence(
     val_interval_batches: int,
     accumulate_grad_batches: int,
