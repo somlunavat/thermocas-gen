@@ -53,4 +53,6 @@ folds/
 tb_logs/
 wandb/
 lightning_logs/
+# Lightning's default logger root for this project's runs (11_train.py).
+logs/
 *.log

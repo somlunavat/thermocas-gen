@@ -18,6 +18,9 @@ filterwarnings = ["error::DeprecationWarning"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# Vendored third-party model code. It is kept as close to upstream as possible
+# so it can be re-diffed when ProGen2 changes, which rules out reformatting it.
+extend-exclude = ["thermocas/model/progen2"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
