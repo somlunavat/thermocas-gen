@@ -39,7 +39,7 @@ from thermocas.model.dataset import (  # noqa: E402
 from thermocas.model.device import resolve_device  # noqa: E402
 from thermocas.model.gate2 import Gate2Params, evaluate_gate2  # noqa: E402
 from thermocas.model.lit_model import ConditionedProteinLM  # noqa: E402
-from thermocas.model.tokenizer import ProteinTokenizer  # noqa: E402
+from thermocas.model.tokenizer import PretrainedTokenizerAdapter  # noqa: E402
 
 
 def leakage_gate_passed(splits_dir: Path) -> tuple[bool, str]:
@@ -163,17 +163,26 @@ def main() -> int:
     data_cfg = Config.load("train")
     model_cfg = Config.load("model")
     binner = GrowthTemperatureBinner.from_config(Config.load("data"))
-    tokenizer = ProteinTokenizer(binner.names)
+    # The residue vocabulary comes from the checkpoint, not from this project.
+    # Only the growth-temperature control tokens are ours, appended above the
+    # checkpoint's rows. See PretrainedTokenizerAdapter for what went wrong
+    # when the project used its own ids here.
+    checkpoint = str(model_cfg[f"{args.model}/checkpoint"])
+    tokenizer = PretrainedTokenizerAdapter.from_checkpoint(checkpoint, binner.names)
 
     spec = resolve_device(
         str(data_cfg["device/accelerator"]), str(data_cfg["device/precision"])
     )
     print(f"stage:     {args.stage.upper()}")
-    print(f"model:     {args.model} ({model_cfg[f'{args.model}/checkpoint']})")
+    print(f"model:     {args.model} ({checkpoint})")
     print(f"device:    {spec.accelerator} / {spec.precision}")
     for note in spec.notes:
         print(f"  note: {note}")
-    print(f"vocab:     {len(tokenizer)} tokens, bins {binner.names}")
+    print(
+        f"vocab:     {len(tokenizer)} tokens "
+        f"({tokenizer.base_vocab_size} from the checkpoint + "
+        f"{len(tokenizer) - tokenizer.base_vocab_size} control), bins {binner.names}"
+    )
 
     # Gate: leakage must have been checked before stage B training.
     if args.stage == "b" and not args.skip_leakage_check:

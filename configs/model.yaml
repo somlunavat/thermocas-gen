@@ -19,6 +19,12 @@ conditioned_lm:
   # this and refuses to start otherwise.
   required_context: 1703
   use_growth_temp_token: true
+  # Recompute activations instead of storing them. Required to fit 765M
+  # parameters in 16 GB; measured at 1.5 GB with LoRA and bf16 against 3.9 GB
+  # without. The vendored ProGen2 code had to be changed before this took
+  # effect at all -- upstream declared itself incompatible with checkpointing
+  # and read a config flag the forward pass alone honoured.
+  gradient_checkpointing: true
   # Fraction of examples whose growth-temperature token is replaced by the
   # unconditional token, enabling classifier-free-guidance-style strengthening
   # at generation time.
@@ -50,6 +56,7 @@ unconditioned_lm:
   required_context: 1703
   use_growth_temp_token: false
   growth_temp_token_dropout: 0.0
+  gradient_checkpointing: true
   ogt_head:
     enabled: false
   lora:

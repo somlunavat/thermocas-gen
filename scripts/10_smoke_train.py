@@ -39,7 +39,10 @@ from thermocas.model.dataset import (  # noqa: E402
 )
 from thermocas.model.device import resolve_device  # noqa: E402
 from thermocas.model.lit_model import ConditionedProteinLM, OgtHead  # noqa: E402
-from thermocas.model.tokenizer import ProteinTokenizer  # noqa: E402
+from thermocas.model.tokenizer import (  # noqa: E402
+    PretrainedTokenizerAdapter,
+    ProteinTokenizer,
+)
 
 BYTES_PER_GB = 1024**3
 
@@ -176,7 +179,8 @@ def main() -> int:
         print(f"\nloading {checkpoint} (this downloads ~1.5 GB)")
         from thermocas.model.lit_model import build_lightning_module
 
-        tokenizer = ProteinTokenizer(binner.names)
+        # The real path must use the checkpoint's own residue vocabulary.
+        tokenizer = PretrainedTokenizerAdapter.from_checkpoint(checkpoint, binner.names)
         try:
             module = build_lightning_module(model_cfg, train_cfg, tokenizer)
         except Exception as exc:  # noqa: BLE001
@@ -192,7 +196,9 @@ def main() -> int:
         print("\npass --tiny, --real or --estimate-only")
         return 1
 
-    # Tiny end-to-end run at full sequence length.
+    # Tiny end-to-end run at full sequence length. This path deliberately
+    # keeps the from-scratch ProteinTokenizer: there is no pretrained
+    # checkpoint to be consistent with, and it needs no network.
     print("\ntiny model, real sequence length")
     tokenizer = ProteinTokenizer(binner.names)
     sequences = {f"s{i}": "MGKPIPNPLLGLDST" * 90 for i in range(4)}  # 1,350 residues

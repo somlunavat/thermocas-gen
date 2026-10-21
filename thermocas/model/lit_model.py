@@ -24,7 +24,7 @@ import torch
 from torch import nn
 
 from thermocas.model.dataset import IGNORE_INDEX
-from thermocas.model.tokenizer import ProteinTokenizer
+from thermocas.model.tokenizer import PretrainedTokenizerAdapter, ProteinTokenizer
 
 
 class ContextTooShortError(RuntimeError):
@@ -104,7 +104,7 @@ def assert_context_fits(declared_context: int, required_context: int, checkpoint
 
 
 def extend_embeddings_for_control_tokens(
-    model, tokenizer: ProteinTokenizer, base_vocab_size: int
+    model, tokenizer: ProteinTokenizer | PretrainedTokenizerAdapter, base_vocab_size: int
 ) -> int:
     """Resize the token embeddings to fit the control tokens.
 
@@ -171,7 +171,7 @@ class ConditionedProteinLM:
 def build_lightning_module(
     model_cfg,
     train_cfg,
-    tokenizer: ProteinTokenizer,
+    tokenizer: ProteinTokenizer | PretrainedTokenizerAdapter,
     ogt_mean_c: float = 45.0,
     ogt_std_c: float = 20.0,
     model_name: str = "conditioned_lm",
@@ -182,17 +182,33 @@ def build_lightning_module(
     suite, does not require Lightning, transformers or peft to be installed.
     """
     import lightning as L  # noqa: N812
-    from transformers import AutoConfig, AutoModelForCausalLM
+
+    from thermocas.model.compat import load_progen2
+    from thermocas.model.progen2 import ProGenConfig
 
     section = model_cfg.section(model_name)
     checkpoint = str(section["checkpoint"])
     required_context = int(section["required_context"])
 
-    hf_config = AutoConfig.from_pretrained(checkpoint, trust_remote_code=True)
-    declared = getattr(hf_config, "n_positions", None) or getattr(
-        hf_config, "max_position_embeddings", 0
-    )
-    assert_context_fits(int(declared), required_context, checkpoint)
+    hf_config = ProGenConfig.from_pretrained(checkpoint)
+    declared = int(hf_config.n_positions)
+    assert_context_fits(declared, required_context, checkpoint)
+
+    if not isinstance(tokenizer, PretrainedTokenizerAdapter):
+        raise TypeError(
+            "fine-tuning a pretrained checkpoint requires PretrainedTokenizerAdapter, "
+            f"got {type(tokenizer).__name__}. The residue vocabulary belongs to the "
+            "checkpoint: feeding this project's own ids into ProGen2 points every "
+            "residue at the wrong embedding row, and LoRA freezes the base weights so "
+            "the model cannot recover."
+        )
+    if tokenizer.base_vocab_size != int(hf_config.vocab_size_emb):
+        raise ValueError(
+            f"tokenizer was built against a base vocabulary of "
+            f"{tokenizer.base_vocab_size} but {checkpoint} has "
+            f"{hf_config.vocab_size_emb} embedding rows; the control-token ids would "
+            "land on pretrained rows"
+        )
 
     class LitConditionedProteinLM(L.LightningModule):
         def __init__(self) -> None:
@@ -210,9 +226,9 @@ def build_lightning_module(
                 }
             )
 
-            self.backbone = AutoModelForCausalLM.from_pretrained(
-                checkpoint, trust_remote_code=True
-            )
+            # load_progen2 verifies that every pretrained weight actually
+            # arrived and was not re-initialized; see thermocas/model/compat.py.
+            self.backbone = load_progen2(checkpoint)
             base_vocab = self.backbone.get_input_embeddings().weight.shape[0]
             self.added_rows = extend_embeddings_for_control_tokens(
                 self.backbone, tokenizer, base_vocab
@@ -237,9 +253,12 @@ def build_lightning_module(
                     ),
                 )
 
-            hidden_size = getattr(hf_config, "n_embd", None) or getattr(
-                hf_config, "hidden_size", 0
-            )
+            if bool(section["gradient_checkpointing"]):
+                # Stage A's memory budget assumes this is on. The vendored
+                # model had to be changed for it to take effect at all.
+                self.backbone.gradient_checkpointing_enable()
+
+            hidden_size = int(hf_config.embed_dim)
             self.ogt_head = None
             if bool(section["ogt_head/enabled"]):
                 self.ogt_head = OgtHead(
