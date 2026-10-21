@@ -43,7 +43,12 @@ from thermocas.data.cluster import (  # noqa: E402
     verify_no_cluster_straddles_splits,
     write_split_files,
 )
-from thermocas.data.fasta import canonical_seq_id, read_fasta, write_fasta  # noqa: E402
+from thermocas.data.fasta import (  # noqa: E402
+    FastaRecord,
+    canonical_seq_id,
+    read_fasta,
+    write_fasta,
+)
 from thermocas.data.leakage import (  # noqa: E402
     LeakageParams,
     mmseqs_leakage_commands,
@@ -89,7 +94,14 @@ def main() -> int:
         print("run scripts/08_collect_broad.py first", file=sys.stderr)
         return 1
 
-    records = list(read_fasta(sequences))
+    # Canonicalize on the way in. MMseqs2 reports results under the bare
+    # accession, so a corpus carrying full tr|ACC|NAME identifiers makes every
+    # id comparison below silently fail to match -- which is how six Cas9
+    # homologs survived an earlier run of this screen.
+    records = [
+        FastaRecord(canonical_seq_id(r.seq_id), r.description, r.sequence)
+        for r in read_fasta(sequences)
+    ]
     print(f"stage A corpus: {len(records):,} sequences from {sequences.name}")
 
     # Held-out Cas9 set. Prefer the real split; fall back to all seeds, since
@@ -102,15 +114,26 @@ def main() -> int:
         cas9_fasta = data_cfg.resolve_path("paths/labeled_fasta")
         if test_ids_file.is_file() and cas9_fasta.is_file():
             ids = {ln.strip() for ln in test_ids_file.read_text().split() if ln.strip()}
-            heldout = [r for r in read_fasta(cas9_fasta) if r.seq_id in ids]
+            ids = {canonical_seq_id(i) for i in ids}
+            heldout = [
+                FastaRecord(canonical_seq_id(r.seq_id), r.description, r.sequence)
+                for r in read_fasta(cas9_fasta)
+                if canonical_seq_id(r.seq_id) in ids
+            ]
             print(f"held-out Cas9: {len(heldout)} from the stage B test split")
         else:
-            heldout = list(read_fasta(data_cfg.resolve_path("paths/seeds")))
+            heldout = [
+                FastaRecord(canonical_seq_id(r.seq_id), r.description, r.sequence)
+                for r in read_fasta(data_cfg.resolve_path("paths/seeds"))
+            ]
             print(f"held-out Cas9: {len(heldout)} reference seeds "
                   "(no Cas9 test split yet; screening against all seeds is the "
                   "conservative choice)")
     else:
-        heldout = list(read_fasta(heldout_path))
+        heldout = [
+            FastaRecord(canonical_seq_id(r.seq_id), r.description, r.sequence)
+            for r in read_fasta(heldout_path)
+        ]
         print(f"held-out Cas9: {len(heldout)} from {heldout_path.name}")
 
     if not heldout:
@@ -159,8 +182,28 @@ def main() -> int:
             print(f"  {seq_id}: identity {worst[seq_id]:.1%} to a held-out Cas9")
 
     kept = [r for r in records if r.seq_id not in excluded]
+
+    # The screen reporting exclusions while writing every input sequence is
+    # exactly the silent failure this guard exists for: it happened once,
+    # because identifiers on the two sides of the comparison had different
+    # formats, and nothing checked that the counts agreed.
+    expected = len(records) - len(excluded)
+    if len(kept) != expected:
+        unmatched = sorted(excluded - {r.seq_id for r in records})
+        print(
+            f"\nID MISMATCH: {len(excluded)} sequence(s) were flagged for exclusion but "
+            f"only {len(records) - len(kept)} could be removed from the corpus.\n"
+            f"  {len(unmatched)} flagged id(s) do not appear in the corpus, e.g. "
+            f"{', '.join(unmatched[:5])}\n"
+            "  The alignment and the corpus are using different identifier formats, so "
+            "Cas9 homologs would survive into pre-training. Refusing to write.",
+            file=sys.stderr,
+        )
+        return 4
+
     write_fasta(out_fasta, kept)
-    print(f"\nwrote {len(kept):,} screened sequences to {out_fasta}")
+    print(f"\nwrote {len(kept):,} screened sequences to {out_fasta} "
+          f"({len(excluded)} excluded)")
 
     if exclusion.fail_on_violation and excluded and not kept:
         print("screening removed everything", file=sys.stderr)
@@ -170,7 +213,10 @@ def main() -> int:
     labels: dict[str, dict[str, str]] = {}
     if label_table.is_file():
         with label_table.open(newline="") as handle:
-            labels = {row["seq_id"]: row for row in csv.DictReader(handle)}
+            labels = {}
+            for row in csv.DictReader(handle):
+                row["seq_id"] = canonical_seq_id(row["seq_id"])
+                labels[row["seq_id"]] = row
         for seq_id in excluded:
             labels.pop(seq_id, None)
 

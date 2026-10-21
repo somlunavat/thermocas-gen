@@ -442,6 +442,65 @@ growth-temperature class. Gate 2 compares the correct token against a shuffled
 one, and on a single-class validation set shuffling changes nothing, so the
 check would pass vacuously.
 
+### 2026-10-20 — Stage A corpus built; Gate A passed; one silent screen failure
+
+Collection finished: 800/800 species, 0 failures across 800 requests after the
+retry fix. 330,626 sequences fetched, 311,993 kept after length and residue
+filtering.
+
+**The annotation screen removed 300 Cas9-family proteins** from the bacterial
+proteomes — 254 matching "crispr-associated endonuclease", 46 matching "cas9".
+A six-species pilot had predicted several hundred, and every one of these would
+have entered pre-training invisibly to the stage B leakage gate, which only
+ever compares the Cas9 corpus against itself.
+
+**The alignment screen then caught 6 more that annotation missed**, at 30.3% to
+35.1% identity to held-out Cas9 sequences. This is the justification for having
+both screens rather than one.
+
+**A silent failure worth recording in full.** The first run of
+`09_screen_broad.py` reported those 6 exclusions and then wrote all 311,993
+sequences, i.e. excluded nothing, and printed "stage A gate PASSED" on top. The
+cause: the id canonicalization fix landed after collection had already started,
+so the corpus was assembled by the then-running process with full
+`tr|ACC|NAME` identifiers, while MMseqs2 reports results under the bare
+accession. The exclusion comparison therefore never matched. I had patched the
+same id mismatch at the cluster-join site earlier and missed this second
+comparison.
+
+The deeper failure was not the mismatch but that nothing checked the
+script's own contradictory output: "6 excluded" followed by "wrote 311,993".
+`09_screen_broad.py` now refuses to write when the number removed does not
+equal the number flagged, names the unmatched ids, and exits 4. Identifiers are
+canonicalized at read time for the corpus, the held-out set and the label
+table, so every comparison downstream operates on one format.
+
+**Corrected result, verified independently:** 311,987 sequences written, the 6
+flagged ids absent from both the corpus and the splits, all ids canonical,
+train and val disjoint and covering the corpus exactly.
+
+| | clusters | sequences |
+| --- | --- | --- |
+| meso | 27,575 | 182,964 |
+| thermo | 34,376 | 129,023 |
+| **total** | **55,840** | **311,987** |
+
+Train 295,035 sequences over 53,048 clusters; val 16,952 over 2,792. No test
+split, by design.
+
+Three observations that matter for stage B:
+
+1. **The thermophilic class is the more diverse one.** 34,376 clusters from
+   129k sequences against 27,575 from 183k mesophilic. The scarcer class is
+   less redundant, which is favourable for learning the conditioning.
+2. **About 6,100 clusters contain both classes** (27,575 + 34,376 = 61,951
+   against 55,840 distinct clusters). Those are homologous proteins from
+   organisms at different growth temperatures, which is exactly the contrast
+   the conditioning token has to explain.
+3. **Sequence balance is 1.42:1 rather than 1:1** despite balanced species
+   selection, because thermophiles have smaller proteomes. Far better than the
+   20:1 species imbalance, but worth watching at Gate 2.
+
 ## Decisions
 
 | Date | Decision | Reason |
