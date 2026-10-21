@@ -242,3 +242,53 @@ class ExclusionReport:
         if self.alignment_examples:
             lines.append(f"  alignment hits e.g. {', '.join(self.alignment_examples[:5])}")
         return "\n".join(lines)
+
+
+@dataclass
+class ExclusionCheck:
+    """Whether every flagged sequence could actually be removed."""
+
+    flagged: int
+    removed: int
+    unmatched: tuple[str, ...]
+
+    @property
+    def consistent(self) -> bool:
+        return self.flagged == self.removed and not self.unmatched
+
+    def failure_message(self) -> str:
+        return (
+            f"ID MISMATCH: {self.flagged} sequence(s) were flagged for exclusion but "
+            f"only {self.removed} could be removed from the corpus.\n"
+            f"  {len(self.unmatched)} flagged id(s) do not appear in the corpus, e.g. "
+            f"{', '.join(self.unmatched[:5])}\n"
+            "  The alignment and the corpus are using different identifier formats, so "
+            "Cas9 homologs would survive into pre-training. Refusing to write."
+        )
+
+
+def verify_exclusions_applied(
+    corpus_ids: Iterable[str], flagged_ids: Iterable[str], kept_count: int
+) -> ExclusionCheck:
+    """Check that flagged sequences were really dropped from the corpus.
+
+    This exists because of a real silent failure. An earlier run of the stage A
+    screen reported six Cas9 homologs excluded, wrote all 311,993 input
+    sequences, and printed a passing gate verdict on top. The identifiers on
+    the two sides of the comparison had different formats -- MMseqs2 reports
+    the bare accession while the corpus carried ``tr|ACC|NAME`` -- so nothing
+    matched and nothing was removed.
+
+    The id mismatch was the proximate cause. The defect was that the script's
+    own output was self-contradictory and unchecked, so a screen that excluded
+    nothing could still announce exclusions. Making the arithmetic explicit and
+    testable is the actual fix; canonicalizing identifiers only removes one way
+    of reaching the same state.
+    """
+    corpus = set(corpus_ids)
+    flagged = set(flagged_ids)
+    return ExclusionCheck(
+        flagged=len(flagged),
+        removed=len(corpus) - kept_count,
+        unmatched=tuple(sorted(flagged - corpus)),
+    )

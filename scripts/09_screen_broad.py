@@ -32,7 +32,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from thermocas.config import Config, GrowthTemperatureBinner  # noqa: E402
-from thermocas.data.broad import Cas9Exclusion  # noqa: E402
+from thermocas.data.broad import (  # noqa: E402
+    Cas9Exclusion,
+    verify_exclusions_applied,
+)
 from thermocas.data.cluster import (  # noqa: E402
     ClusterParams,
     SequenceMeta,
@@ -183,22 +186,11 @@ def main() -> int:
 
     kept = [r for r in records if r.seq_id not in excluded]
 
-    # The screen reporting exclusions while writing every input sequence is
-    # exactly the silent failure this guard exists for: it happened once,
-    # because identifiers on the two sides of the comparison had different
-    # formats, and nothing checked that the counts agreed.
-    expected = len(records) - len(excluded)
-    if len(kept) != expected:
-        unmatched = sorted(excluded - {r.seq_id for r in records})
-        print(
-            f"\nID MISMATCH: {len(excluded)} sequence(s) were flagged for exclusion but "
-            f"only {len(records) - len(kept)} could be removed from the corpus.\n"
-            f"  {len(unmatched)} flagged id(s) do not appear in the corpus, e.g. "
-            f"{', '.join(unmatched[:5])}\n"
-            "  The alignment and the corpus are using different identifier formats, so "
-            "Cas9 homologs would survive into pre-training. Refusing to write.",
-            file=sys.stderr,
-        )
+    check = verify_exclusions_applied(
+        (r.seq_id for r in records), excluded, len(kept)
+    )
+    if not check.consistent:
+        print("\n" + check.failure_message(), file=sys.stderr)
         return 4
 
     write_fasta(out_fasta, kept)

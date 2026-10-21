@@ -241,3 +241,82 @@ class TestAgainstShippedConfigs:
         the bin definitions must be identical or the token changes meaning."""
         data_bins = GrowthTemperatureBinner.from_config(Config.load("data")).names
         assert data_bins == ["meso", "thermo"]
+
+
+class TestExclusionGuard:
+    """Reproduces the exact silent failure that reached the stage A corpus.
+
+    The first screening run reported 6 Cas9 homologs excluded, wrote all
+    311,993 input sequences, and printed a passing gate verdict. The guard
+    makes that combination unrepresentable.
+    """
+
+    def test_the_real_failure_is_caught(self):
+        from thermocas.data.broad import verify_exclusions_applied
+
+        # Corpus carries full UniProt identifiers; the aligner reported bare
+        # accessions. Nothing matched, so nothing was removed.
+        corpus = [f"tr|ACC{i}|NAME_{i}" for i in range(311_993)]
+        flagged = ["F8ANZ7", "E0I418", "A8FG14", "A0A511VA75", "A0ABX5QQ77", "A0A2N6UFH8"]
+        check = verify_exclusions_applied(corpus, flagged, kept_count=311_993)
+
+        assert not check.consistent
+        assert check.flagged == 6
+        assert check.removed == 0
+        assert len(check.unmatched) == 6
+        message = check.failure_message()
+        assert "ID MISMATCH" in message
+        assert "different identifier formats" in message
+        # The message shows the first five unmatched ids in sorted order, so
+        # assert on one that falls inside that window rather than on F8ANZ7,
+        # which sorts last among the six.
+        assert "A0A2N6UFH8" in message
+        assert "F8ANZ7" in check.unmatched
+
+    def test_a_correct_exclusion_passes(self):
+        from thermocas.data.broad import verify_exclusions_applied
+
+        corpus = [f"ACC{i}" for i in range(100)]
+        check = verify_exclusions_applied(corpus, ["ACC3", "ACC7"], kept_count=98)
+        assert check.consistent
+        assert (check.flagged, check.removed) == (2, 2)
+        assert check.unmatched == ()
+
+    def test_excluding_nothing_is_consistent(self):
+        from thermocas.data.broad import verify_exclusions_applied
+
+        corpus = [f"ACC{i}" for i in range(50)]
+        assert verify_exclusions_applied(corpus, [], kept_count=50).consistent
+
+    def test_partial_match_is_caught(self):
+        """One id matching and one not is still a mismatch."""
+        from thermocas.data.broad import verify_exclusions_applied
+
+        corpus = ["ACC1", "ACC2", "ACC3"]
+        check = verify_exclusions_applied(corpus, ["ACC1", "GHOST"], kept_count=2)
+        assert not check.consistent
+        assert check.unmatched == ("GHOST",)
+
+    def test_removing_more_than_flagged_is_caught(self):
+        """Over-removal means the filter dropped sequences nobody flagged."""
+        from thermocas.data.broad import verify_exclusions_applied
+
+        corpus = [f"ACC{i}" for i in range(100)]
+        check = verify_exclusions_applied(corpus, ["ACC1"], kept_count=90)
+        assert not check.consistent
+        assert check.removed == 10
+
+    def test_canonicalization_closes_the_root_cause(self):
+        """The guard is the backstop; canonical ids are the actual fix.
+
+        With identifiers canonicalized at read time, the formats agree and the
+        guard has nothing to catch.
+        """
+        from thermocas.data.fasta import canonical_seq_id
+        from thermocas.data.broad import verify_exclusions_applied
+
+        raw = ["tr|F8ANZ7|F8ANZ7_METHO", "tr|ACC2|X", "tr|ACC3|Y"]
+        corpus = [canonical_seq_id(i) for i in raw]
+        assert corpus == ["F8ANZ7", "ACC2", "ACC3"]
+        check = verify_exclusions_applied(corpus, ["F8ANZ7"], kept_count=2)
+        assert check.consistent
