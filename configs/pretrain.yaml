@@ -16,7 +16,14 @@ seed: 20261019
 
 paths:
   species_table: data/processed/broad_species.csv
+  # Raw collected corpus, before the Cas9 alignment screen. Kept for
+  # provenance; NEVER trained on.
   sequences: data/processed/broad_proteins.fasta
+  # What training reads. 09_screen_broad.py writes this after removing Cas9
+  # homologs; training refuses to start if it is missing, because the
+  # difference between these two files is exactly the contamination that
+  # would void the stage B leakage gate.
+  screened_sequences: data/processed/broad_proteins_screened.fasta
   label_table: data/processed/broad_label_table.csv
   splits_dir: data/splits/broad
 

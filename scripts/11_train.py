@@ -59,8 +59,34 @@ def leakage_gate_passed(splits_dir: Path) -> tuple[bool, str]:
     return True, marker.read_text().strip()
 
 
+def resolve_training_corpus(cfg) -> Path:
+    """The FASTA training is allowed to read.
+
+    Stage A must read the screened corpus, not the raw one. The difference
+    between the two files is the Cas9 homologs that the alignment screen
+    removed, and training on the raw corpus would put held-out Cas9 into
+    pre-training where the stage B leakage gate cannot see it. A missing
+    screened file is therefore an error, not a reason to fall back.
+    """
+    if "paths/screened_sequences" in cfg:
+        screened = cfg.resolve_path("paths/screened_sequences")
+        if not screened.is_file():
+            raise FileNotFoundError(
+                f"screened corpus not found: {screened}\n"
+                "Run scripts/09_screen_broad.py first. Training on the unscreened "
+                "corpus would place Cas9 homologs in pre-training, which the stage B "
+                "leakage gate cannot detect."
+            )
+        return screened
+    if "paths/labeled_fasta" in cfg:
+        return cfg.resolve_path("paths/labeled_fasta")
+    return cfg.resolve_path("paths/sequences")
+
+
 def build_datasets(cfg, data_cfg, tokenizer, model_cfg, model_name, split_names=("train", "val")):
-    sequences = load_sequences(cfg.resolve_path("paths/sequences" if "paths/sequences" in cfg else "paths/labeled_fasta"))
+    corpus = resolve_training_corpus(cfg)
+    print(f"corpus:    {corpus.name}")
+    sequences = load_sequences(corpus)
     labels = load_label_table(cfg.resolve_path("paths/label_table"))
     datasets = {}
     for split in split_names:
@@ -83,7 +109,9 @@ def build_datasets(cfg, data_cfg, tokenizer, model_cfg, model_name, split_names=
 
 
 @torch.no_grad()
-def evaluate_perplexity(module, dataset, tokenizer, device, bin_override=None, batch_size=2):
+def evaluate_perplexity(
+    module, dataset, tokenizer, device, bin_override=None, batch_size=2, limit=None
+):
     """Summed NLL and token count over a dataset, optionally re-binned.
 
     ``bin_override`` is a per-example bin assignment, which is how the Gate 2
@@ -92,9 +120,10 @@ def evaluate_perplexity(module, dataset, tokenizer, device, bin_override=None, b
     module.eval()
     total_nll = 0.0
     total_tokens = 0
-    for start in range(0, len(dataset), batch_size):
+    n = len(dataset) if limit is None else min(limit, len(dataset))
+    for start in range(0, n, batch_size):
         items = []
-        for index in range(start, min(start + batch_size, len(dataset))):
+        for index in range(start, min(start + batch_size, n)):
             override = bin_override[index] if bin_override is not None else None
             items.append(dataset.__getitem__(index, growth_temp_bin_override=override, drop_label=False))
         batch = collate(items, tokenizer.pad_id)
@@ -121,6 +150,13 @@ def main() -> int:
     parser.add_argument("--skip-leakage-check", action="store_true",
                         help="only for stage A, which has no Cas9 test split")
     parser.add_argument("--dry-run", action="store_true", help="build everything, train nothing")
+    parser.add_argument(
+        "--gate2-limit",
+        type=int,
+        default=None,
+        help="evaluate Gate 2 on at most this many validation examples. For smoke "
+             "runs only: the real gate uses the whole validation split.",
+    )
     args = parser.parse_args()
 
     stage_cfg = Config.load("pretrain" if args.stage == "a" else "data")
@@ -268,12 +304,19 @@ def main() -> int:
     module.to(device)
     val = datasets["val"]
 
-    true_nll, true_tokens = evaluate_perplexity(module, val, tokenizer, device)
+    limit = args.gate2_limit
+    if limit is not None and limit < len(val):
+        print(f"  WARNING evaluating on {limit} of {len(val)} validation examples "
+              "(--gate2-limit). This is a smoke check, not the real gate.")
+
+    true_nll, true_tokens = evaluate_perplexity(module, val, tokenizer, device, limit=limit)
     shuffled_runs = []
     for index in range(gate2.n_shuffles):
         assignment = val.with_shuffled_labels(rng_seed=int(data_cfg["seed"]) + index)
         shuffled_runs.append(
-            evaluate_perplexity(module, val, tokenizer, device, bin_override=assignment)
+            evaluate_perplexity(
+                module, val, tokenizer, device, bin_override=assignment, limit=limit
+            )
         )
 
     result = evaluate_gate2(true_nll, true_tokens, shuffled_runs, gate2)

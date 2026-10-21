@@ -82,6 +82,30 @@ def main() -> int:
     parser.add_argument("--threads", type=int, default=4)
     args = parser.parse_args()
 
+    # Guard against a partially-redirected run writing over project data.
+    # This happened: a test run pointed --sequences, --out and --splits-dir at
+    # scratch paths but left --label-table defaulted, so a 21-sequence corpus
+    # rewrote 20 rows of the real 311,987-row label table with splits derived
+    # from itself. Inputs and outputs have to travel together.
+    redirected = [
+        name
+        for name, value in (
+            ("--sequences", args.sequences),
+            ("--out", args.out),
+            ("--splits-dir", args.splits_dir),
+        )
+        if value is not None
+    ]
+    if redirected and args.label_table is None:
+        print(
+            f"refusing to run: {', '.join(redirected)} redirected but --label-table "
+            "left at its configured default, which would rewrite the project's label "
+            "table using splits derived from a different corpus.\n"
+            "Pass --label-table explicitly, or redirect nothing.",
+            file=sys.stderr,
+        )
+        return 2
+
     cfg = Config.load(args.config)
     data_cfg = Config.load(args.data_config)
     binner = GrowthTemperatureBinner.from_config(data_cfg)
@@ -89,7 +113,11 @@ def main() -> int:
 
     sequences = args.sequences or cfg.resolve_path("paths/sequences")
     label_table = args.label_table or cfg.resolve_path("paths/label_table")
-    out_fasta = args.out or sequences.with_name(sequences.stem + "_screened.fasta")
+    out_fasta = args.out or (
+        cfg.resolve_path("paths/screened_sequences")
+        if "paths/screened_sequences" in cfg
+        else sequences.with_name(sequences.stem + "_screened.fasta")
+    )
     splits_dir = args.splits_dir or cfg.resolve_path("paths/splits_dir")
 
     if not sequences.is_file():

@@ -554,6 +554,37 @@ Because the cluster-level split puts validation clusters outside training, Gate
 2 cannot be passed by memorizing cluster identity: the model has to generalize
 from sequence features to unseen families. That makes the gate a real test.
 
+### 2026-10-20 — Two correctness fixes before the first training run
+
+**Training would have read the unscreened corpus.** `11_train.py` resolved
+`paths/sequences`, which is the raw collected file still containing the 6 Cas9
+homologs the alignment screen found; the screened output went to a different
+path and nothing pointed training at it. `configs/pretrain.yaml` now names
+`screened_sequences` explicitly, and training raises rather than falling back
+when it is absent. The difference between those two files is exactly the
+contamination the stage B leakage gate cannot detect, so a silent fallback was
+the wrong behaviour.
+
+**A redirected run overwrote project data — mine did.** While verifying the
+exclusion guard I ran `09_screen_broad.py` with `--sequences`, `--out` and
+`--splits-dir` pointed at scratch paths but left `--label-table` at its
+configured default. A 21-sequence test corpus therefore rewrote 20 rows of the
+real 311,987-row label table with splits derived from itself, which is how one
+sequence (F8AMI4) came to be marked `val` in the label table while the split
+file said `train`.
+
+The one-row disagreement was trivial; the mechanism was not. The script now
+refuses to run when any output path is redirected while `--label-table` stays
+defaulted, since inputs and outputs have to travel together. Re-ran the screen
+to regenerate the table, then verified independently: 0 split disagreements, 0
+cluster_id mismatches, and the label table and split files each cover the
+corpus exactly with no blanks and no train/val overlap.
+
+Worth noting that the check which caught this was the same label-table/split
+cross-check written for its own sake. Verifying two artifacts agree, rather
+than trusting whichever was written last, is what made a silent one-row
+corruption visible.
+
 ## Decisions
 
 | Date | Decision | Reason |
