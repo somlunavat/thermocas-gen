@@ -772,6 +772,66 @@ Consequences, in order of value:
    measured rather than estimated before the training schedule is planned.
 
 
+## 2026-10-22 — Fused attention, and a padding mask that was not needed
+
+Replaced ProGen2's hand-rolled attention with
+`torch.nn.functional.scaled_dot_product_attention` in the vendored code. The
+eager implementation builds the full `(batch, heads, L, L)` score matrix in
+fp32 and keeps several copies of it alive per layer. Measured on CPU at
+L=1027 with the real base dimensions (1536 wide, 16 heads), one layer's
+forward and backward costs:
+
+| path | peak RSS for one layer |
+| --- | --- |
+| eager | 356 MB |
+| fused, with a padding mask | 195 MB |
+| fused, `is_causal` | 177 MB |
+
+The flash backend is confirmed available and selected on this CPU (4x faster
+than the math backend on the same inputs), so these are not math-backend
+numbers. They are still CPU allocator high-water marks, though, and the
+figure that decides the training schedule is GPU memory under bf16, which
+remains unmeasured. What is now checked rather than estimated is the thing
+that mattered: `tests/test_progen2.py` asserts the fused path never allocates
+a tensor as large as `heads x L x L`, and the eager path always does.
+
+Two things fell out of doing it.
+
+**A float mask defeats the point.** Passing the additive padding mask to
+`scaled_dot_product_attention` forces the mask-aware kernel and allocates an
+`(L, L)` bias, where `is_causal=True` lets the kernel build the triangle
+itself and allocate nothing. So it is worth not passing one.
+
+**With right-aligned padding, causal attention does not need the padding mask
+at all.** A query at a real position attends only to keys at positions at or
+before its own, and every pad key sits after every real key, so the causal
+triangle already excludes them. Pad positions' own outputs do differ, but a
+pad position can only influence later positions, which are also pad, and both
+the language-model loss and the OGT head's mean-pooling exclude those. So
+`ProGenModel.forward` now drops the mask when the batch is right-padded --
+one comparison per forward pass, not per layer -- and builds it only for the
+left-padded case.
+
+This is the kind of argument that is true until some collation change makes it
+false, silently and only in the loss. Three tests hold it in place: the real
+`collate` is asserted to produce right padding, a sequence scored alone is
+asserted to give identical logits at its real positions when scored inside a
+padded batch, and left padding is asserted to still agree with the eager
+implementation.
+
+The fused path deliberately differs from eager in one way. Eager upcasts the
+scores to fp32; the fused kernels keep the input dtype and accumulate in fp32
+internally, as every current transformers attention implementation does.
+Under `32-true` the two are doing the same arithmetic, and the tests require
+them to agree to 1e-5. Under bf16 autocast the fused path is less precise and
+much smaller, which is the trade being made.
+
+Also deleted `checkpoints/stage_a/last.ckpt`. It was 2.9 GB from the 2-step
+run whose control tokens were all the same vector, so nothing in it is worth
+keeping, and a stale checkpoint that loads cleanly is exactly the sort of
+thing that gets picked up by accident later.
+
+
 ## Decisions
 
 | Date | Decision | Reason |
@@ -793,6 +853,8 @@ Consequences, in order of value:
 | 2026-10-21 | Verify loaded weights against the checkpoint file on every load | A clean loading report is not evidence: transformers 5.x re-initialized all 221 tensors and reported nothing |
 | 2026-10-21 | No GenerationMixin on the vendored model; sampling uses the project's own loop | ProGen2 carries the legacy tuple key/value cache, which 5.x's generate() does not produce. Classifier-free-guidance-style sampling needs two forward passes per step anyway, which generate() does not do |
 | 2026-10-21 | Initialize control-token embeddings explicitly, and verify they are distinct | transformers' mean_resizing draw is rank-deficient for a 32x1536 embedding and produced three identical rows; the rows are trainable, so this would have read as "conditioning is hard to learn" rather than as a bug |
+| 2026-10-22 | Fused attention by default, with the eager path kept and config-switchable | The eager path is the reference the fused one is tested against; keeping it means a numerical disagreement can be localized instead of argued about |
+| 2026-10-22 | Drop the padding mask for right-padded batches rather than always building it | An additive mask forces the mask-aware attention kernel; under causal attention the mask is redundant for every position whose output is used |
 | 2026-10-19 | Homolog search runs on a cloud machine, not locally | 16 GB unified memory measured on this Mac; a UniRef50 DIAMOND index does not fit comfortably alongside the OS. Local runs use a subset for smoke-testing only |
 
 ## Environment

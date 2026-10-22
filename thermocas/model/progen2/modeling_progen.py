@@ -47,6 +47,16 @@ from .configuration_progen import ProGenConfig
 logger = logging.get_logger(__name__)
 
 
+def _is_right_padded(attention_mask) -> bool:
+    """True if every row is ones followed by zeros.
+
+    THERMOCAS: added. See the call site in ProGenModel.forward.
+    """
+    if attention_mask.dim() != 2:
+        return False
+    return bool((attention_mask[:, :-1] >= attention_mask[:, 1:]).all())
+
+
 def fixed_pos_embedding(x, seq_dim=1, seq_len=None):
     dim = x.shape[-1]
     if seq_len is None:
@@ -92,6 +102,10 @@ class ProGenAttention(nn.Module):
         self.attn_dropout = nn.Dropout(config.attn_pdrop)
         self.resid_dropout = nn.Dropout(config.resid_pdrop)
 
+        # THERMOCAS: see _attn_sdpa. Read once here so turning it off is a
+        # config change rather than an edit to this file.
+        self.use_sdpa = bool(getattr(config, "use_sdpa_attention", True))
+
         self.embed_dim = config.embed_dim
         self.num_attention_heads = config.n_head
         self.head_dim = self.embed_dim // self.num_attention_heads
@@ -130,6 +144,70 @@ class ProGenAttention(nn.Module):
         new_shape = tensor.size()[:-2] + (num_attention_heads * attn_head_size,)
         return tensor.view(new_shape)
 
+    def _causal_mask(self, query, key):
+        # THERMOCAS: causal mask built here rather than sliced from a buffer.
+        # Shape (1, 1, query_length, key_length), True where attention is
+        # allowed. The row offset matters: during incremental decoding the
+        # query is shorter than the key, and the queries are the *last*
+        # query_length positions, so the mask is the bottom slice of the
+        # lower-triangular matrix rather than the top-left corner.
+        query_length, key_length = query.size(-2), key.size(-2)
+        return torch.ones(
+            (key_length, key_length), dtype=torch.bool, device=query.device
+        ).tril()[None, None, key_length - query_length : key_length, :key_length]
+
+    def _attn_sdpa(self, query, key, value, attention_mask=None):
+        """Fused attention via ``scaled_dot_product_attention``.
+
+        This exists for memory, not speed. The eager path below materializes
+        the (batch, heads, L, L) score matrix in fp32, several copies of it
+        per layer: at L=1027 with 16 heads that is roughly 340 MB per layer
+        and 27 layers of it, which is what made a 1.5 GB estimate measure as
+        19 GB. The fused kernels never hold the full matrix.
+
+        The dtype differs from the eager path deliberately. Eager upcasts the
+        scores to fp32 to avoid overflow; the fused kernels keep the input
+        dtype and accumulate in fp32 internally, which is what every current
+        transformers attention implementation does. Under ``32-true`` the two
+        paths are doing the same arithmetic; under bf16 autocast this one is
+        less precise and much smaller. ``tests/test_progen2.py`` checks the
+        two agree.
+        """
+        # A boolean mask forces the mask-aware kernel. Where there is no
+        # padding and the query covers the whole key, is_causal lets the
+        # flash kernel build the triangle itself and allocate nothing.
+        if attention_mask is None and query.size(-2) == key.size(-2):
+            attn_mask, is_causal = None, True
+        else:
+            # The additive padding mask arrives as (batch, 1, 1, key_length)
+            # of 0.0 and -10000.0 (see ProGenModel.forward). Combining it
+            # with the causal triangle additively keeps one (batch, 1, L, L)
+            # fp32 mask -- one copy, not one per head.
+            causal_mask = self._causal_mask(query, key)
+            # fp16 cannot hold -1e9; it would become -inf, and an all-masked
+            # row would then produce NaN rather than a uniform distribution.
+            floor = max(self.masked_bias, torch.finfo(query.dtype).min / 2)
+            attn_mask = torch.zeros(
+                causal_mask.shape, dtype=query.dtype, device=query.device
+            ).masked_fill(~causal_mask, floor)
+            if attention_mask is not None:
+                attn_mask = attn_mask + attention_mask.to(query.dtype)
+            is_causal = False
+
+        attn_output = F.scaled_dot_product_attention(
+            query,
+            key,
+            value,
+            attn_mask=attn_mask,
+            dropout_p=self.attn_dropout.p if self.training else 0.0,
+            is_causal=is_causal,
+            # ProGen2 divides by sqrt(head_dim) after the matmul; this is the
+            # same constant, passed rather than defaulted so a change to
+            # scale_attn cannot silently diverge between the two paths.
+            scale=1.0 / self.scale_attn,
+        )
+        return attn_output, None
+
     def _attn(
         self,
         query,
@@ -138,11 +216,7 @@ class ProGenAttention(nn.Module):
         attention_mask=None,
         head_mask=None,
     ):
-        # THERMOCAS: causal mask built here rather than sliced from a buffer.
-        query_length, key_length = query.size(-2), key.size(-2)
-        causal_mask = torch.ones(
-            (key_length, key_length), dtype=torch.bool, device=query.device
-        ).tril()[None, None, key_length - query_length : key_length, :key_length]
+        causal_mask = self._causal_mask(query, key)
 
         # Keep the attention weights computation in fp32 to avoid overflow issues
         query = query.to(torch.float32)
@@ -236,9 +310,17 @@ class ProGenAttention(nn.Module):
             present = None
 
         # compute self-attention: softmax((Q @ K.T) / sqrt(dim_head)) @ V
-        attn_output, attn_weights = self._attn(
-            query, key, value, attention_mask, head_mask
-        )
+        # THERMOCAS: the fused kernel cannot return the score matrix and
+        # cannot apply a per-head mask, so those two requests fall back to
+        # the eager path rather than being silently ignored.
+        if self.use_sdpa and not output_attentions and head_mask is None:
+            attn_output, attn_weights = self._attn_sdpa(
+                query, key, value, attention_mask
+            )
+        else:
+            attn_output, attn_weights = self._attn(
+                query, key, value, attention_mask, head_mask
+            )
 
         attn_output = self._merge_heads(                               # (B, T, E)  
             attn_output, self.num_attention_heads, self.head_dim
@@ -475,6 +557,24 @@ class ProGenModel(ProGenPreTrainedModel):
         if attention_mask is not None:
             assert batch_size > 0, "batch_size has to be defined and > 0"
             attention_mask = attention_mask.view(batch_size, -1)
+
+        # THERMOCAS: under causal attention, right-aligned padding needs no
+        # mask. A query at a real position attends to keys at positions <=
+        # its own, and every pad key sits at a position after every real one,
+        # so the causal triangle already excludes them. The pad positions'
+        # own outputs do differ, but a pad position can only influence later
+        # positions, which are also pad, and both the language-model loss and
+        # the OGT head's pooling exclude them (see
+        # test_padding_does_not_change_the_real_positions).
+        #
+        # Dropping it is worth the check: an additive mask makes attention
+        # take the mask-aware kernel and allocate an (L, L) bias, where
+        # is_causal lets the fused kernel build the triangle itself and
+        # allocate nothing. One comparison per forward pass, not per layer.
+        if attention_mask is not None and _is_right_padded(attention_mask):
+            attention_mask = None
+
+        if attention_mask is not None:
             # We create a 3D attention mask from a 2D tensor mask.
             # Sizes are [batch_size, 1, 1, to_seq_length]
             # So we can broadcast to [batch_size, num_heads, from_seq_length, to_seq_length]

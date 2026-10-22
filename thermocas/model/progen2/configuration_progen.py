@@ -58,6 +58,7 @@ class ProGenConfig(PretrainedConfig):
         initializer_range=0.02,
         scale_attn_weights=True,
         gradient_checkpointing=False,
+        use_sdpa_attention=True,
         use_cache=True,
         bos_token_id=1,
         eos_token_id=2,
@@ -80,6 +81,10 @@ class ProGenConfig(PretrainedConfig):
         self.layer_norm_epsilon = layer_norm_epsilon
         self.initializer_range = initializer_range
         self.gradient_checkpointing = gradient_checkpointing
+        # THERMOCAS: added. Fused attention instead of the hand-rolled score
+        # matrix; see _attn_sdpa in modeling_progen.py. Absent from the
+        # published config.json, so the default applies when loading it.
+        self.use_sdpa_attention = use_sdpa_attention
         self.scale_attn_weights = scale_attn_weights
         self.use_cache = use_cache
 

@@ -217,6 +217,230 @@ class TestTinyModelOffline:
             model(torch.tensor([[3, 16]]), head_mask=torch.ones(2))
 
 
+class TestFusedAttention:
+    """The fused path has to be arithmetically the old path, not a new model.
+
+    Replacing the hand-rolled score matrix with
+    ``scaled_dot_product_attention`` is a memory change: at a 1,027-token
+    context the eager path holds roughly 340 MB of fp32 scores per layer,
+    times 27 layers. A mask built with the wrong row offset, or a scale
+    applied twice, would still train -- to a different model, quietly. So
+    these compare the two implementations rather than checking the fused one
+    runs.
+    """
+
+    @staticmethod
+    def pair():
+        """The same weights, one model fused and one eager."""
+        import copy
+
+        fused = TestTinyModelOffline.tiny().eval()
+        eager = copy.deepcopy(fused).eval()
+        for block in eager.transformer.h:
+            block.attn.use_sdpa = False
+        return fused, eager
+
+    def test_the_fused_path_is_on_by_default(self):
+        model = TestTinyModelOffline.tiny()
+        assert all(block.attn.use_sdpa for block in model.transformer.h)
+
+    def test_it_can_be_turned_off_from_the_config(self):
+        from thermocas.model.progen2 import ProGenConfig, ProGenForCausalLM
+
+        model = ProGenForCausalLM(
+            ProGenConfig(
+                vocab_size_emb=32,
+                vocab_size_lm_head=32,
+                n_positions=64,
+                embed_dim=32,
+                n_layer=2,
+                n_head=4,
+                rotary_dim=8,
+                use_sdpa_attention=False,
+            )
+        )
+        assert not any(block.attn.use_sdpa for block in model.transformer.h)
+
+    def test_unpadded_logits_match_the_eager_path(self):
+        import torch
+
+        fused, eager = self.pair()
+        tokens = torch.tensor([[3, 16, 9, 25, 7, 11]])
+        with torch.no_grad():
+            assert torch.allclose(
+                fused(tokens).logits, eager(tokens).logits, atol=1e-5
+            )
+
+    def test_padded_logits_match_the_eager_path(self):
+        """Padding is where a mask built in the wrong shape shows up."""
+        import torch
+
+        fused, eager = self.pair()
+        tokens = torch.tensor([[3, 16, 9, 25, 0, 0], [7, 11, 4, 19, 22, 6]])
+        mask = torch.tensor([[1, 1, 1, 1, 0, 0], [1, 1, 1, 1, 1, 1]])
+        with torch.no_grad():
+            fused_logits = fused(tokens, attention_mask=mask).logits
+            eager_logits = eager(tokens, attention_mask=mask).logits
+        assert torch.allclose(fused_logits, eager_logits, atol=1e-5)
+
+    def test_padding_does_not_change_the_real_positions(self):
+        """The check that does not depend on the eager path being right.
+
+        A shorter sequence scored on its own and scored inside a padded batch
+        must give identical logits at its real positions. This fails if the
+        causal triangle and the padding mask are combined in the wrong shape,
+        or if the pad keys leak in.
+        """
+        import torch
+
+        fused, _ = self.pair()
+        alone = torch.tensor([[3, 16, 9, 25]])
+        padded = torch.tensor([[3, 16, 9, 25, 0, 0]])
+        mask = torch.tensor([[1, 1, 1, 1, 0, 0]])
+        with torch.no_grad():
+            solo = fused(alone).logits
+            batched = fused(padded, attention_mask=mask).logits[:, :4]
+        assert torch.allclose(solo, batched, atol=1e-5)
+
+    def test_incremental_decoding_matches_a_full_forward(self):
+        """The offset case: query length 1 against a longer key.
+
+        ``is_causal=True`` would be wrong here -- it aligns the triangle to
+        the top left, so a single query would attend only to position 0.
+        """
+        import torch
+
+        fused, _ = self.pair()
+        tokens = torch.tensor([[3, 16, 9, 25]])
+        with torch.no_grad():
+            full = fused(tokens).logits[:, -1]
+            prefix = fused(tokens[:, :-1], use_cache=True)
+            stepped = fused(
+                tokens[:, -1:], past_key_values=prefix.past_key_values
+            ).logits[:, -1]
+        assert torch.allclose(full, stepped, atol=1e-5)
+
+    def test_left_padded_logits_match_the_eager_path(self):
+        """The case the padding mask is still built for.
+
+        Left padding breaks the argument that the causal triangle already
+        excludes the pad keys, so the additive mask is kept -- and it has to
+        agree with the eager implementation.
+        """
+        import torch
+
+        fused, eager = self.pair()
+        tokens = torch.tensor([[0, 0, 3, 16, 9, 25], [7, 11, 4, 19, 22, 6]])
+        mask = torch.tensor([[0, 0, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1]])
+        with torch.no_grad():
+            assert torch.allclose(
+                fused(tokens, attention_mask=mask).logits,
+                eager(tokens, attention_mask=mask).logits,
+                atol=1e-5,
+            )
+
+    def test_right_padding_is_recognized(self):
+        import torch
+
+        from thermocas.model.progen2.modeling_progen import _is_right_padded
+
+        assert _is_right_padded(torch.tensor([[1, 1, 1, 0, 0]]))
+        assert _is_right_padded(torch.tensor([[1, 1, 1, 1, 1]]))
+        assert _is_right_padded(torch.tensor([[1, 1, 0, 0], [1, 1, 1, 1]]))
+        assert not _is_right_padded(torch.tensor([[0, 0, 1, 1]]))
+        assert not _is_right_padded(torch.tensor([[1, 1, 1, 1], [0, 1, 1, 1]]))
+        # Not a 2-D batch mask; the caller has already prepared it.
+        assert not _is_right_padded(torch.ones(1, 1, 1, 4))
+
+    def test_the_collate_function_produces_right_padding(self):
+        """The assumption above, checked against the batch the trainer builds.
+
+        If collation ever switched to left padding, the mask would start
+        being built again -- correct, but slower and larger, and the comment
+        in ProGenModel.forward would be describing something that no longer
+        happens.
+        """
+        import torch
+
+        from thermocas.model.dataset import collate
+        from thermocas.model.progen2.modeling_progen import _is_right_padded
+        from thermocas.model.tokenizer import ProteinTokenizer
+
+        tokenizer = ProteinTokenizer(["meso", "thermo"])
+
+        def item(sequence: str) -> dict:
+            ids = torch.tensor(tokenizer.encode(sequence).ids)
+            return {
+                "input_ids": ids,
+                "labels": ids.clone(),
+                "ogt_c": torch.tensor(40.0),
+                "temp_bin": "meso",
+                "seq_id": sequence,
+            }
+
+        batch = collate(
+            [item(s) for s in ("MKVL", "MKVLAAGG", "MK")],
+            pad_id=tokenizer.pad_id,
+        )
+        assert _is_right_padded(batch["attention_mask"])
+
+    def test_output_attentions_falls_back_rather_than_returning_nothing(self):
+        """The fused kernel has no score matrix to hand back."""
+        import torch
+
+        fused, _ = self.pair()
+        tokens = torch.tensor([[3, 16, 9, 25]])
+        with torch.no_grad():
+            attentions = fused(tokens, output_attentions=True).attentions
+        assert len(attentions) == 2
+        assert attentions[0] is not None
+        assert tuple(attentions[0].shape) == (1, 4, 4, 4)
+
+    def test_the_fused_path_is_differentiable_under_checkpointing(self):
+        import torch
+
+        fused, _ = self.pair()
+        fused.gradient_checkpointing_enable()
+        fused.train()
+        fused(torch.tensor([[3, 16, 9, 25]])).logits.sum().backward()
+        assert fused.transformer.wte.weight.grad is not None
+
+    def test_the_fused_path_does_not_allocate_the_score_matrix(self):
+        """The reason for the change, measured rather than asserted.
+
+        Tracked with a tensor-size counter rather than a memory profiler so
+        it works on CPU in CI. The eager path allocates at least one
+        (batch, heads, L, L) fp32 tensor per layer; the fused path allocates
+        the combined mask once per layer at (1, 1, L, L) and no per-head
+        scores.
+        """
+        import torch
+
+        length = 64
+        tokens = torch.arange(1, length + 1)[None] % 32
+        per_head = 4 * length * length  # heads x L x L
+
+        class Watch(torch.overrides.TorchFunctionMode):
+            def __init__(self):
+                self.largest = 0
+
+            def __torch_function__(self, func, types, args=(), kwargs=None):
+                out = func(*args, **(kwargs or {}))
+                if isinstance(out, torch.Tensor):
+                    self.largest = max(self.largest, out.numel())
+                return out
+
+        def largest_allocation(model):
+            watch = Watch()
+            with torch.no_grad(), watch:
+                model(tokens)
+            return watch.largest
+
+        fused, eager = self.pair()
+        assert largest_allocation(eager) >= per_head
+        assert largest_allocation(fused) < per_head
+
+
 @pytest.mark.skipif(not NETWORK, reason="set THERMOCAS_NETWORK_TESTS=1 to hit the HF Hub")
 class TestAgainstRealCheckpoint:
     """The checks that actually caught the bugs."""
