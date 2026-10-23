@@ -64,7 +64,26 @@ export PYTORCH_ENABLE_MPS_FALLBACK=1
 pytest
 ```
 
-Cloud GPU (training and folding):
+Cloud GPU (training and folding). Training runs on Modal, so the GPU type and
+the package versions are in the repository rather than in someone's shell
+history; `cloud/modal_app.py` documents the layout:
+
+```bash
+pip install modal
+modal token new                            # opens a browser once
+modal run cloud/modal_app.py::check        # GPU, corpus, dry run. Costs cents
+modal run cloud/modal_app.py::upload       # pushes the corpus to the volume
+modal run cloud/modal_app.py::smoke        # 50 steps; reports peak memory
+modal run cloud/modal_app.py::train        # the real run
+modal run cloud/modal_app.py::ls           # what is on the volume
+```
+
+Add `--gpu A100-40GB` (or `L4`, `H100`) to any of those. `check` first: it
+fails for all the boring reasons that would otherwise fail ten minutes into a
+paid run.
+
+For an ssh-style machine instead, `environment-gpu.yml` builds the same
+environment under conda:
 
 ```bash
 conda env create -f environment-gpu.yml
@@ -82,6 +101,7 @@ data/
   splits/     cluster assignments (committed)
 scripts/      numbered pipeline stages, run in order
               00_fetch_pfam.py fetches the HMM profiles (not committed)
+cloud/        modal_app.py: GPU type, pinned versions and the run commands
 thermocas/
   model/      tokenizer, dataset, LightningModule, train, generate
   eval/       thermostability scoring, folding, structure metrics, controls, report

@@ -832,6 +832,54 @@ keeping, and a stale checkpoint that loads cleanly is exactly the sort of
 thing that gets picked up by accident later.
 
 
+## 2026-10-22 — Moving training to a cloud GPU
+
+Added `cloud/modal_app.py`. The reason for a committed launcher rather than an
+ssh session is that the GPU memory figure is the number the whole training
+schedule depends on, and this project has already been wrong about it once by
+a factor of twelve. A figure is only worth putting in this log if the run that
+produced it can be repeated, which means the GPU type, the package versions
+and the command have to be in the repository.
+
+Layout: a read-only mount of the repository plus a persistent volume. The
+volume holds exactly what git cannot -- the 171 MB stage A corpus, the
+checkpoints, the logs, and the Hugging Face cache for ProGen2's 3 GB
+checkpoint. Code, configs and the split files come from the repository,
+because the splits are committed and git should stay their single source of
+truth. So the only thing that can diverge between a local run and a GPU run
+is the corpus, and that is uploaded from the same local files a local run
+reads.
+
+Package versions are pinned to what the test suite passes against here, so a
+GPU run is not also a package upgrade. Python is 3.12 there against 3.14
+locally: torch wheels for 3.14 are not dependably available, and the project
+targets >= 3.11 with a py311 ruff target, so no 3.14 syntax is in play.
+
+Four entrypoints, in the order they should be used: `check`, `upload`,
+`smoke`, `train`. `check` reports the GPU, the driver, bf16 support, whether
+the flash and memory-efficient attention backends are actually available
+there, what the volume holds, and the exit code of a `--dry-run`. It exists
+because every one of those fails for a boring reason, and a boring reason
+should not cost ten minutes of paid GPU time to discover.
+
+One thing `check` verifies that would otherwise be easy to miss: that the
+flash backend is available on the rented card. If it is not, SDPA silently
+falls back to the math backend, which materializes the score matrix -- and
+then the memory figure from `smoke` would be a math-backend figure, and the
+batch size chosen from it would be wrong in the expensive direction.
+
+`smoke` is 50 optimizer steps and reports peak allocated and reserved memory,
+wall time per step, and headroom against the card's total. It deliberately
+does not exercise validation or checkpointing: those run on a
+500-optimizer-step cadence, so the first run to prove a checkpoint gets
+written is the first run past step 500.
+
+None of this has been executed. It is written against Modal's documented API
+and it has not been run once, because the account does not exist yet. The
+first `check` is as likely to find a mistake in this file as in the
+environment.
+
+
 ## Decisions
 
 | Date | Decision | Reason |
@@ -855,6 +903,9 @@ thing that gets picked up by accident later.
 | 2026-10-21 | Initialize control-token embeddings explicitly, and verify they are distinct | transformers' mean_resizing draw is rank-deficient for a 32x1536 embedding and produced three identical rows; the rows are trainable, so this would have read as "conditioning is hard to learn" rather than as a bug |
 | 2026-10-22 | Fused attention by default, with the eager path kept and config-switchable | The eager path is the reference the fused one is tested against; keeping it means a numerical disagreement can be localized instead of argued about |
 | 2026-10-22 | Drop the padding mask for right-padded batches rather than always building it | An additive mask forces the mask-aware attention kernel; under causal attention the mask is redundant for every position whose output is used |
+| 2026-10-22 | Training runs on Modal, with the launcher committed | Per-second billing suits the actual pattern of a short run then a change; and a memory figure in this log is worth nothing if the run behind it cannot be repeated |
+| 2026-10-22 | Pin the GPU image to the versions the tests pass against locally | A GPU run should not also be a package upgrade; the one deliberate difference, Python 3.12 against 3.14, is recorded above |
+| 2026-10-22 | Splits come from git on the GPU, the corpus from the volume | The splits are committed, so git stays their single source of truth; the corpus cannot be, so it is the one thing that can diverge and the one thing `upload` re-pushes |
 | 2026-10-19 | Homolog search runs on a cloud machine, not locally | 16 GB unified memory measured on this Mac; a UniRef50 DIAMOND index does not fit comfortably alongside the OS. Local runs use a subset for smoke-testing only |
 
 ## Environment
