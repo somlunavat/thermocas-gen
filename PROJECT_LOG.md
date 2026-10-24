@@ -880,6 +880,48 @@ first `check` is as likely to find a mistake in this file as in the
 environment.
 
 
+## 2026-10-23 — First GPU container, and the remote code that was still being fetched
+
+`check` on an A10G. The environment is good: 23.7 GB, driver 610.57.04, torch
+2.12.0+cu130, bf16 supported, and both the flash and memory-efficient
+attention backends available -- so the memory figures from a smoke run will
+be real fused-attention figures rather than math-backend ones. The split
+files arrived from git and the corpus was correctly reported missing, which
+is the layout working as intended.
+
+The dry run exited 1, for the right reason: the screened corpus was not on
+the volume yet, and the guard in `build_datasets` said so rather than
+training on the unscreened file.
+
+But the output also contained this:
+
+    [transformers] A new version of the following files was downloaded from
+    https://huggingface.co/hugohrban/progen2-base: - configuration_progen.py
+
+The project was still downloading and executing model code from the Hub.
+`PretrainedTokenizerAdapter.from_checkpoint` called
+`AutoConfig.from_pretrained(checkpoint, trust_remote_code=True)` to read the
+vocabulary size, which resolves the auto_map in the published config.json and
+fetches `configuration_progen.py` at call time. It is a leftover from before
+the vendoring, and it survived the vendoring commit because nothing about it
+looked wrong: the vocabulary size it returned was correct.
+
+What it cost was the guarantee. The vendored package exists so that the model
+definition is a fixed artifact in this repository rather than a file that can
+change upstream between runs, and this call put a moving one back on the
+path -- with the tokenizer trusting a vocabulary size from a different class
+than the one the model is built from. Now uses the vendored `ProGenConfig`.
+
+Worth noting where this was caught. The same line must have been printed on
+every local run for the past two days. It took a clean container, where
+nothing was cached, to make it a *new* download and therefore a notice worth
+reading. Fresh environments are a diagnostic, not just a deployment target.
+
+The test for it fails inside `get_cached_module_file` rather than asserting
+on source text, so any future route back to remote code trips it regardless
+of what calls it.
+
+
 ## Decisions
 
 | Date | Decision | Reason |
@@ -906,6 +948,7 @@ environment.
 | 2026-10-22 | Training runs on Modal, with the launcher committed | Per-second billing suits the actual pattern of a short run then a change; and a memory figure in this log is worth nothing if the run behind it cannot be repeated |
 | 2026-10-22 | Pin the GPU image to the versions the tests pass against locally | A GPU run should not also be a package upgrade; the one deliberate difference, Python 3.12 against 3.14, is recorded above |
 | 2026-10-22 | Splits come from git on the GPU, the corpus from the volume | The splits are committed, so git stays their single source of truth; the corpus cannot be, so it is the one thing that can diverge and the one thing `upload` re-pushes |
+| 2026-10-23 | No AutoConfig and no trust_remote_code anywhere on the path | Vendoring the model code is pointless if the vocabulary size still comes from a file fetched from the Hub at call time |
 | 2026-10-19 | Homolog search runs on a cloud machine, not locally | 16 GB unified memory measured on this Mac; a UniRef50 DIAMOND index does not fit comfortably alongside the OS. Local runs use a subset for smoke-testing only |
 
 ## Environment
@@ -969,6 +1012,8 @@ verification.
 | 2026-10-21 | transformers | 5.10.2 |
 | 2026-10-21 | peft | 0.21.2 |
 | 2026-10-21 | lightning | 2.6.6 |
+| 2026-10-23 | GPU (Modal) | NVIDIA A10G, 23.7 GB, driver 610.57.04 |
+| 2026-10-23 | torch (GPU image) | 2.12.0+cu130 |
 | 2026-10-21 | ProGen2 (vendored) | hugohrban/progen2-base @ 71228cbfca5960f9fab5775f378bba3673af9f00 |
 
 ## Seeds

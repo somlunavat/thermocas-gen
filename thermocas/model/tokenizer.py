@@ -364,9 +364,16 @@ class PretrainedTokenizerAdapter:
 
         base = Tokenizer.from_pretrained(checkpoint)
         if base_vocab_size is None:
-            from transformers import AutoConfig
+            # The vendored config class, not AutoConfig with
+            # trust_remote_code. AutoConfig resolves the auto_map in the
+            # hub's config.json, which downloads and executes
+            # configuration_progen.py from the Hub at call time -- the
+            # moving target the vendoring exists to remove. It also means the
+            # vocabulary size the tokenizer trusts would come from a
+            # different class than the one the model is built from.
+            from thermocas.model.progen2 import ProGenConfig
 
-            config = AutoConfig.from_pretrained(checkpoint, trust_remote_code=True)
+            config = ProGenConfig.from_pretrained(checkpoint)
             base_vocab_size = int(
                 getattr(config, "vocab_size_lm_head", None)
                 or getattr(config, "vocab_size", 0)

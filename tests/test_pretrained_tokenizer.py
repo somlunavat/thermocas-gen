@@ -166,6 +166,34 @@ class TestAgainstRealCheckpoint:
         assert adapter.base.token_to_id("A") == 5
         assert adapter.decode(adapter.encode("MEVVIVTGMSGAGK").ids) == "MEVVIVTGMSGAGK"
 
+    def test_no_remote_code_is_fetched_or_executed(self, monkeypatch):
+        """Building the tokenizer must not reach for the Hub's model code.
+
+        It used to. `from_checkpoint` called
+        `AutoConfig.from_pretrained(trust_remote_code=True)`, which resolves
+        the auto_map in the published config.json and downloads
+        configuration_progen.py from the Hub at call time. That is the
+        moving target the whole vendored package exists to remove, and it
+        was invisible until a clean container printed the download notice.
+
+        Failing inside get_cached_module_file rather than asserting on a
+        string makes this a test of behaviour: any future path back to
+        remote code trips it, whatever calls it.
+        """
+        import transformers.dynamic_module_utils as dynamic
+
+        from thermocas.config import Config
+
+        def refuse(*args, **kwargs):
+            raise AssertionError("remote code was requested from the Hub")
+
+        monkeypatch.setattr(dynamic, "get_cached_module_file", refuse)
+        monkeypatch.setattr(dynamic, "get_class_from_dynamic_module", refuse)
+
+        checkpoint = Config.load("model")["conditioned_lm/checkpoint"]
+        adapter = PretrainedTokenizerAdapter.from_checkpoint(checkpoint, BINS)
+        assert adapter.base_vocab_size == 32
+
 
 class TestPromptLengthAndOverhead:
     """What the dataset needs in order not to guess the prompt layout."""
