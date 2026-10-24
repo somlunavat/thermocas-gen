@@ -18,7 +18,10 @@ data:
   # Sequences longer than max_length are dropped and counted, never silently
   # discarded. The prior repo's silent drop is the bug this guards against.
   on_too_long: drop_and_report   # drop_and_report | truncate
-  num_workers: 0                 # 0 is required for stability on mps
+  # auto resolves per accelerator: 0 on mps, where worker processes hang
+  # rather than run slowly, and up to 8 on cuda, where 0 leaves the GPU
+  # waiting on a single tokenizing process. See resolve_num_workers.
+  num_workers: auto
 
 optim:
   lr: 1.0e-4

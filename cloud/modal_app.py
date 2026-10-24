@@ -208,6 +208,7 @@ def _train(
     max_steps: int | None,
     gate2_limit: int | None,
     init_from: str | None,
+    batch_size: int | None,
     extra: list[str],
 ) -> dict:
     """Run scripts/11_train.py and report what it cost.
@@ -217,6 +218,13 @@ def _train(
     is its exit code, and the codes keep their meanings: 2 for a validation
     cadence mismatch, 3 for a failed gate or a checkpoint whose keys do not
     match.
+
+    The wall time measured here is the whole call: the checkpoint download,
+    the model build, training and Gate 2. It is the right number for "what
+    did this cost" and the wrong one for "how fast is a step", which is why
+    dividing it by the step count is no longer done here. ThroughputReport
+    times the fit phase from inside and prints that figure in the output
+    above.
     """
     import importlib.util
     import sys
@@ -235,6 +243,8 @@ def _train(
         argv += ["--gate2-limit", str(gate2_limit)]
     if init_from is not None:
         argv += ["--init-from", init_from]
+    if batch_size is not None:
+        argv += ["--batch-size", str(batch_size)]
     argv += list(extra)
 
     spec = importlib.util.spec_from_file_location(
@@ -261,8 +271,6 @@ def _train(
         ),
         "gpu": torch.cuda.get_device_name(0),
     }
-    if max_steps:
-        result["seconds_per_step"] = round(elapsed / max_steps, 2)
     return result
 
 
@@ -335,7 +343,12 @@ def upload(stage: str = "a"):
 
 
 @app.local_entrypoint()
-def smoke(gpu: str = DEFAULT_GPU, steps: int = 50, gate2_limit: int = 64):
+def smoke(
+    gpu: str = DEFAULT_GPU,
+    steps: int = 50,
+    gate2_limit: int = 64,
+    batch_size: int = 0,
+):
     """50 steps on the GPU: the first real memory and throughput measurement.
 
     Gate 2 runs on a deliberately small slice here. At 50 steps it cannot
@@ -349,7 +362,11 @@ def smoke(gpu: str = DEFAULT_GPU, steps: int = 50, gate2_limit: int = 64):
     run -- but it does mean the first run to prove a checkpoint gets written
     is the first run past step 500.
     """
-    _report(_train.with_options(gpu=gpu).remote("a", steps, gate2_limit, None, []))
+    _report(
+        _train.with_options(gpu=gpu).remote(
+            "a", steps, gate2_limit, None, batch_size or None, []
+        )
+    )
 
 
 @app.local_entrypoint()
@@ -359,6 +376,7 @@ def train(
     max_steps: int = 0,
     gate2_limit: int = 0,
     init_from: str = "",
+    batch_size: int = 0,
 ):
     """A full run. max_steps 0 means whatever configs/train.yaml says."""
     _report(
@@ -367,6 +385,7 @@ def train(
             max_steps or None,
             gate2_limit or None,
             init_from or None,
+            batch_size or None,
             [],
         )
     )
@@ -383,11 +402,8 @@ def _report(result: dict) -> None:
     print(f"\ncommand      {' '.join(result['argv'])}")
     print(f"gpu          {result['gpu']}  ({result['total_memory_gb']} GB)")
     print(f"exit code    {result['exit_code']}")
-    print(f"wall time    {result['seconds']} s", end="")
-    if "seconds_per_step" in result:
-        print(f"  ({result['seconds_per_step']} s/step)")
-    else:
-        print()
+    print(f"wall time    {result['seconds']} s, setup and Gate 2 included "
+          "(the per-step rate is in the throughput line above)")
     print(f"peak memory  {result['peak_allocated_gb']} GB allocated, "
           f"{result['peak_reserved_gb']} GB reserved, of "
           f"{result['total_memory_gb']} GB")

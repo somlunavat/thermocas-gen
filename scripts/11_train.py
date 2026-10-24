@@ -36,9 +36,10 @@ from thermocas.model.dataset import (  # noqa: E402
     load_label_table,
     load_sequences,
 )
-from thermocas.model.device import resolve_device  # noqa: E402
+from thermocas.model.device import resolve_device, resolve_num_workers  # noqa: E402
 from thermocas.model.gate2 import Gate2Params, evaluate_gate2  # noqa: E402
 from thermocas.model.lit_model import ConditionedProteinLM  # noqa: E402
+from thermocas.model.throughput import ThroughputReport  # noqa: E402
 from thermocas.model.tokenizer import PretrainedTokenizerAdapter  # noqa: E402
 
 
@@ -125,7 +126,11 @@ def evaluate_perplexity(
         items = []
         for index in range(start, min(start + batch_size, n)):
             override = bin_override[index] if bin_override is not None else None
-            items.append(dataset.__getitem__(index, growth_temp_bin_override=override, drop_label=False))
+            items.append(
+                dataset.__getitem__(
+                    index, growth_temp_bin_override=override, drop_label=False
+                )
+            )
         batch = collate(items, tokenizer.pad_id)
         input_ids = batch["input_ids"].to(device)
         attention_mask = batch["attention_mask"].to(device)
@@ -147,6 +152,13 @@ def main() -> int:
     parser.add_argument("--model", default="conditioned_lm")
     parser.add_argument("--init-from", type=Path, default=None, help="stage A checkpoint")
     parser.add_argument("--max-steps", type=int, default=None)
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=None,
+        help="override batch/size. For finding the largest batch a GPU fits; "
+             "the value that is actually used belongs in configs/train.yaml",
+    )
     parser.add_argument("--skip-leakage-check", action="store_true",
                         help="only for stage A, which has no Cas9 test split")
     parser.add_argument("--dry-run", action="store_true", help="build everything, train nothing")
@@ -173,10 +185,13 @@ def main() -> int:
     spec = resolve_device(
         str(data_cfg["device/accelerator"]), str(data_cfg["device/precision"])
     )
+    num_workers, worker_notes = resolve_num_workers(
+        spec.accelerator, str(data_cfg["data/num_workers"])
+    )
     print(f"stage:     {args.stage.upper()}")
     print(f"model:     {args.model} ({checkpoint})")
     print(f"device:    {spec.accelerator} / {spec.precision}")
-    for note in spec.notes:
+    for note in (*spec.notes, *worker_notes):
         print(f"  note: {note}")
     print(
         f"vocab:     {len(tokenizer)} tokens "
@@ -276,12 +291,22 @@ def main() -> int:
             return 3
         print(f"initialized from {args.init_from} ({loaded}/{total} tensors)")
 
+    train_batch_size = args.batch_size or int(data_cfg["batch/size"])
+    if args.batch_size:
+        print(f"batch size:  {train_batch_size} (overridden from "
+              f"{int(data_cfg['batch/size'])} on the command line)")
+
     def loader(split: str, shuffle: bool) -> DataLoader:
         return DataLoader(
             datasets[split],
-            batch_size=int(data_cfg["batch/size" if split == "train" else "batch/val_size"]),
+            batch_size=(
+                train_batch_size
+                if split == "train"
+                else int(data_cfg["batch/val_size"])
+            ),
             shuffle=shuffle,
-            num_workers=int(data_cfg["data/num_workers"]),
+            num_workers=num_workers,
+            persistent_workers=num_workers > 0,
             collate_fn=lambda b: collate(b, tokenizer.pad_id),
         )
 
@@ -308,6 +333,12 @@ def main() -> int:
     print(f"validation: every {cadence} steps on at most "
           f"{int(data_cfg['validation/limit_batches'])} batches")
 
+    # Timed from inside the fit phase. Timing the whole script instead puts
+    # the checkpoint download and Gate 2 into the per-step figure, which is
+    # how the first GPU run came back at 2.97 s/step against a real rate
+    # roughly nine times faster.
+    throughput = ThroughputReport(planned_steps=int(data_cfg["optim/max_steps"]))
+
     trainer = L.Trainer(
         accelerator=spec.accelerator,
         precision=spec.precision,
@@ -327,6 +358,7 @@ def main() -> int:
                 save_last=True,
             ),
             LearningRateMonitor(logging_interval="step"),
+            throughput,
         ],
         logger=CSVLogger("logs", name=f"stage_{args.stage}"),
         enable_progress_bar=True,
@@ -334,6 +366,12 @@ def main() -> int:
 
     L.seed_everything(int(data_cfg["seed"]), workers=True)
     trainer.fit(module, loader("train", True), loader("val", False))
+
+    # Printed before Gate 2, which is itself minutes of GPU time and would
+    # otherwise push the throughput figures out of sight above the gate's
+    # verdict.
+    print()
+    print(throughput.report())
 
     # Gate 2.
     if not gate2.enabled:

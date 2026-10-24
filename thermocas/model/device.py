@@ -33,7 +33,9 @@ def detect_accelerator() -> str:
     return "cpu"
 
 
-def resolve_precision(accelerator: str, requested: str | int = "auto") -> tuple[str, tuple[str, ...]]:
+def resolve_precision(
+    accelerator: str, requested: str | int = "auto"
+) -> tuple[str, tuple[str, ...]]:
     """Pick a precision that the accelerator actually supports.
 
     Returns the precision string and any notes worth logging. An unsupported
@@ -62,11 +64,49 @@ def resolve_precision(accelerator: str, requested: str | int = "auto") -> tuple[
         notes.append(f"precision {requested!r} on cpu is slow and unstable; using 32-true")
         return "32-true", tuple(notes)
 
-    if accelerator == "cuda" and requested in {"bf16", "bf16-mixed"} and not torch.cuda.is_bf16_supported():
+    if (
+        accelerator == "cuda"
+        and requested in {"bf16", "bf16-mixed"}
+        and not torch.cuda.is_bf16_supported()
+    ):
         notes.append("bf16 unsupported on this GPU; using fp16-mixed")
         return "16-mixed", tuple(notes)
 
     return requested, tuple(notes)
+
+
+def resolve_num_workers(
+    accelerator: str, requested: str | int = "auto"
+) -> tuple[int, tuple[str, ...]]:
+    """Pick a DataLoader worker count the accelerator can actually use.
+
+    This is a device question for the same reason precision is. On `mps`,
+    worker processes are a source of hangs, so the project runs single
+    process. On a cloud GPU container that same 0 is a straight tax: the GPU
+    waits while one process tokenizes, and the first A10 run was told by
+    Lightning to use 16.
+
+    Capped at 8 rather than the core count because the work per batch is
+    small and each worker holds its own copy of the dataset's index.
+    """
+    notes: list[str] = []
+    requested = str(requested)
+
+    if requested != "auto":
+        count = int(requested)
+        if accelerator == "mps" and count > 0:
+            notes.append(
+                f"num_workers {count} requested on mps; using 0, where worker "
+                "processes hang rather than run slowly"
+            )
+            return 0, tuple(notes)
+        return count, ()
+
+    if accelerator == "cuda":
+        count = min(8, os.cpu_count() or 1)
+        return count, (f"num_workers auto: {count} on cuda",)
+    # mps hangs with workers; on cpu they compete with the training process.
+    return 0, (f"num_workers auto: 0 on {accelerator}",)
 
 
 def resolve_device(accelerator: str = "auto", precision: str | int = "auto") -> DeviceSpec:
@@ -83,7 +123,9 @@ def resolve_device(accelerator: str = "auto", precision: str | int = "auto") -> 
             "cpu": True,
         }
         if resolved not in available:
-            raise ValueError(f"unknown accelerator {accelerator!r}; expected cuda, mps, cpu or auto")
+            raise ValueError(
+                f"unknown accelerator {accelerator!r}; expected cuda, mps, cpu or auto"
+            )
         if not available[resolved]:
             fallback = detect_accelerator()
             notes.append(f"accelerator {resolved!r} unavailable; falling back to {fallback!r}")
