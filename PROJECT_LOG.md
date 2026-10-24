@@ -922,6 +922,45 @@ on source text, so any future route back to remote code trips it regardless
 of what calls it.
 
 
+## 2026-10-23 — Batch size, measured; and a speedup declined
+
+The first batch-size sweep could not answer its own question. It compared a
+batch-1 run at `num_workers=0` against a batch-4 run at 8 workers, by step
+count -- and an optimizer step covers `batch_size x accumulate_grad_batches`
+sequences, so 20,000 steps is 1.08 epochs at batch 1 and 4.3 epochs at batch
+4. Two changed variables and a unit that shifts underfoot. Re-run with
+sequence and token counting:
+
+| batch | sequences/s | real tokens/s | padding | peak memory | epoch |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 9.41 | 3,465 | 0.0% | 7.92 GB | 8.7 h |
+| 2 | 9.39 | 3,477 | 22.7% | 11.18 GB | 8.7 h |
+| 4 | 10.06 | 3,748 | 36.1% | 18.25 GB | 8.1 h |
+| 8 | - | - | - | OOM at 22 GB | - |
+
+Batch 1 it is. Batch 4 buys 8% throughput for 2.3x the memory, and the
+padding column says why: raising the batch does improve utilization, but
+36% of the tokens it then processes are padding, which consumes nearly all
+of the gain. One 1,027-token sequence already saturates an A10.
+
+So `batch/size: 1` stays, now for a measured reason rather than because a
+16 GB Mac forced it.
+
+**A speedup declined.** Length-grouped batching -- bucketing similar lengths
+so a large batch stops padding to its longest member -- would plausibly take
+batch 4's padding from 36% to around 5%, which projects to roughly 5.5 h per
+epoch against 8.7. It is not being done, and not for effort. Sequence length
+correlates with protein family and plausibly with growth-temperature bin, so
+a length-grouping sampler makes batch composition correlate with the label
+this project exists to test. That is a confound that would be very hard to
+see after the fact, and three hours on a run that fits inside free credit is
+not worth buying it.
+
+Also: the throughput figure from the first smoke run, 2.97 s/step, was the
+whole script's wall time over the step count, including a 3 GB download and
+Gate 2. Measured from inside the fit phase it is 1.70 s/step at batch 1.
+
+
 ## Decisions
 
 | Date | Decision | Reason |
@@ -949,6 +988,8 @@ of what calls it.
 | 2026-10-22 | Pin the GPU image to the versions the tests pass against locally | A GPU run should not also be a package upgrade; the one deliberate difference, Python 3.12 against 3.14, is recorded above |
 | 2026-10-22 | Splits come from git on the GPU, the corpus from the volume | The splits are committed, so git stays their single source of truth; the corpus cannot be, so it is the one thing that can diverge and the one thing `upload` re-pushes |
 | 2026-10-23 | No AutoConfig and no trust_remote_code anywhere on the path | Vendoring the model code is pointless if the vocabulary size still comes from a file fetched from the Hub at call time |
+| 2026-10-23 | Keep batch size 1 on a 24 GB GPU | Measured: batch 4 gives 8% more real tokens/s for 2.3x the memory, because 36% of what it processes is padding. One full-length sequence already saturates the card |
+| 2026-10-23 | No length-grouped batching | Sequence length correlates with family and plausibly with the growth-temperature label, so bucketing by length would correlate batch composition with the variable being tested. ~3 h saved is not worth an invisible confound |
 | 2026-10-19 | Homolog search runs on a cloud machine, not locally | 16 GB unified memory measured on this Mac; a UniRef50 DIAMOND index does not fit comfortably alongside the OS. Local runs use a subset for smoke-testing only |
 
 ## Environment
