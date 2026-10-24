@@ -41,12 +41,36 @@ class ThroughputReport(L.Callback):
     figure measured once is a figure that goes stale silently.
     """
 
-    def __init__(self, planned_steps: int | None = None) -> None:
+    def __init__(
+        self, planned_steps: int | None = None, epoch_examples: int | None = None
+    ) -> None:
         self.planned_steps = planned_steps
+        self.epoch_examples = epoch_examples
         self.started: float | None = None
         self.elapsed: float | None = None
         self.steps = 0
         self.peak_memory_gb: float | None = None
+        self.sequences = 0
+        self.padded_tokens = 0
+        self.real_tokens = 0
+
+    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx) -> None:
+        """Count work done, not just steps taken.
+
+        Steps per second cannot be compared across batch sizes: an optimizer
+        step covers batch_size x accumulate_grad_batches sequences, so a
+        larger batch makes each step slower and rarer at the same time. Rate
+        per token is comparable, and splitting padded from real tokens makes
+        the cost of a larger batch visible directly -- these sequences run
+        from about 50 to 1,027 tokens, and every batch pads to its longest
+        member.
+        """
+        mask = batch.get("attention_mask")
+        if mask is None:
+            return
+        self.sequences += int(mask.shape[0])
+        self.padded_tokens += int(mask.numel())
+        self.real_tokens += int(mask.sum())
 
     def on_train_start(self, trainer, pl_module) -> None:
         import torch
@@ -80,6 +104,19 @@ class ThroughputReport(L.Callback):
                 round(self.peak_memory_gb, 2) if self.peak_memory_gb else None
             ),
         }
+        if self.sequences:
+            result["sequences"] = self.sequences
+            result["sequences_per_second"] = round(self.sequences / self.elapsed, 2)
+            result["real_tokens_per_second"] = round(self.real_tokens / self.elapsed)
+            result["padding_waste"] = round(
+                1.0 - self.real_tokens / max(self.padded_tokens, 1), 3
+            )
+            # An epoch is the comparable unit across batch sizes, where a
+            # step is not.
+            if self.epoch_examples:
+                result["projected_epoch_seconds"] = round(
+                    self.epoch_examples * self.elapsed / self.sequences
+                )
         if self.planned_steps:
             result["planned_steps"] = self.planned_steps
             result["projected_seconds"] = round(seconds_per_step * self.planned_steps)
@@ -95,6 +132,17 @@ class ThroughputReport(L.Callback):
             f"{format_duration(float(summary['seconds']))} "
             f"({summary['seconds_per_step']} s/step)"
         ]
+        if summary.get("sequences_per_second"):
+            lines.append(
+                f"  {summary['sequences_per_second']} sequences/s, "
+                f"{summary['real_tokens_per_second']:,} real tokens/s, "
+                f"{summary['padding_waste']:.1%} of the tokens processed were padding"
+            )
+        if summary.get("projected_epoch_seconds"):
+            lines.append(
+                f"  one epoch over {self.epoch_examples:,} examples: "
+                f"{format_duration(float(summary['projected_epoch_seconds']))}"
+            )
         if summary.get("peak_memory_gb"):
             lines.append(f"  peak GPU memory during training: "
                          f"{summary['peak_memory_gb']} GB")

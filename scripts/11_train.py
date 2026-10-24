@@ -337,7 +337,10 @@ def main() -> int:
     # the checkpoint download and Gate 2 into the per-step figure, which is
     # how the first GPU run came back at 2.97 s/step against a real rate
     # roughly nine times faster.
-    throughput = ThroughputReport(planned_steps=int(data_cfg["optim/max_steps"]))
+    throughput = ThroughputReport(
+        planned_steps=int(data_cfg["optim/max_steps"]),
+        epoch_examples=len(datasets["train"]),
+    )
 
     trainer = L.Trainer(
         accelerator=spec.accelerator,
