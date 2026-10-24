@@ -26,6 +26,19 @@ First use::
     modal run cloud/modal_app.py::upload    # ~2 min, pushes the corpus
     modal run cloud/modal_app.py::smoke     # 50 steps, reports memory
 
+A run of more than a few minutes needs ``--detach``::
+
+    modal run --detach cloud/modal_app.py::train --stage a
+
+Without it, Modal stops the app when the local client disconnects, and the
+client's auth expires after some hours. A 20,000-step run launched without
+``--detach`` died at step 314 overnight with "Stopping app - local client
+disconnected"; backgrounding the local process does not help, because the
+app's lifetime is tied to the connection and not to that process. With
+``--detach`` the local entrypoint also stops at disconnect, which is why
+``_train`` prints its own summary rather than only returning one -- read it
+back with ``modal app logs``.
+
 ``check`` first. It is cheap and it fails for all the boring reasons -- no
 volume, no corpus, wrong CUDA -- that would otherwise fail ten minutes into a
 paid training run.
@@ -271,6 +284,12 @@ def _train(
         ),
         "gpu": torch.cuda.get_device_name(0),
     }
+    # Printed here as well as returned. Under `modal run --detach` the local
+    # entrypoint dies when the client disconnects and never prints the
+    # returned dict, so a long run's summary has to be in the container's own
+    # output or it is lost with the connection.
+    print()
+    print(_summary_lines(result))
     return result
 
 
@@ -398,19 +417,23 @@ def ls(prefix: str = ""):
         print(line)
 
 
-def _report(result: dict) -> None:
-    print(f"\ncommand      {' '.join(result['argv'])}")
-    print(f"gpu          {result['gpu']}  ({result['total_memory_gb']} GB)")
-    print(f"exit code    {result['exit_code']}")
-    print(f"wall time    {result['seconds']} s, setup and Gate 2 included "
-          "(the per-step rate is in the throughput line above)")
-    print(f"peak memory  {result['peak_allocated_gb']} GB allocated, "
-          f"{result['peak_reserved_gb']} GB reserved, of "
-          f"{result['total_memory_gb']} GB")
-
+def _summary_lines(result: dict) -> str:
     headroom = result["total_memory_gb"] / max(result["peak_reserved_gb"], 0.01)
-    print(f"headroom     {headroom:.1f}x reserved; batch size is 1 in "
-          "configs/train.yaml and is the first thing to raise")
+    return "\n".join([
+        f"command      {' '.join(result['argv'])}",
+        f"gpu          {result['gpu']}  ({result['total_memory_gb']} GB)",
+        f"exit code    {result['exit_code']}",
+        f"wall time    {result['seconds']} s, setup and Gate 2 included "
+        "(the per-step rate is in the throughput line above)",
+        f"peak memory  {result['peak_allocated_gb']} GB allocated, "
+        f"{result['peak_reserved_gb']} GB reserved, of "
+        f"{result['total_memory_gb']} GB ({headroom:.1f}x headroom)",
+    ])
+
+
+def _report(result: dict) -> None:
+    print()
+    print(_summary_lines(result))
     if result["exit_code"] != 0:
         print("\nthe run did not finish cleanly; exit 2 is a validation cadence "
               "mismatch, exit 3 is a failed gate")

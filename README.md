@@ -74,9 +74,13 @@ modal token new                            # opens a browser once
 modal run cloud/modal_app.py::check        # GPU, corpus, dry run. Costs cents
 modal run cloud/modal_app.py::upload       # pushes the corpus to the volume
 modal run cloud/modal_app.py::smoke        # 50 steps; reports peak memory
-modal run cloud/modal_app.py::train        # the real run
+modal run --detach cloud/modal_app.py::train   # the real run; --detach matters
 modal run cloud/modal_app.py::ls           # what is on the volume
 ```
+
+`--detach` is not optional for anything long: without it Modal stops the app
+when the local client disconnects, and the client's auth expires after a few
+hours. Read a detached run's output back with `modal app logs`.
 
 Add `--gpu A100-40GB` (or `L4`, `H100`) to any of those. `check` first: it
 fails for all the boring reasons that would otherwise fail ten minutes into a

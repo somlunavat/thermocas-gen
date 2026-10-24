@@ -961,6 +961,40 @@ whole script's wall time over the step count, including a 3 GB download and
 Gate 2. Measured from inside the fit phase it is 1.70 s/step at batch 1.
 
 
+## 2026-10-24 — The first Stage A run died at step 314, for a boring reason
+
+Launched 20,000 steps, came back to find it had stopped nine minutes in:
+
+    Stopping app - local client disconnected.
+    Use `modal run --detach` to keep apps running even if your local client
+    disconnects.
+    AuthError: Jwt is expired
+
+It was launched under `nohup`, on the belief that keeping the local client
+process alive would keep the run alive. It does not. A Modal app's lifetime
+is tied to the client *connection*, not to the local process, and the
+client's auth expires after a few hours -- so the connection dropped
+overnight and took the job with it. `--detach` is the flag that severs that
+tie, and the error message says so.
+
+Nothing survived, because the run died at step 314 and the first checkpoint
+is at step 500. Cost was about nine minutes of GPU time and a day of wall
+clock.
+
+Two changes. The README and the module docstring now say `--detach` is not
+optional for anything long, at the two places someone would read before
+launching. And `_train` prints its own summary rather than only returning it:
+under `--detach` the local entrypoint dies at disconnect too, so anything
+printed locally is lost, and a long run's figures have to be in the
+container's own output where `modal app logs` can reach them.
+
+Worth noticing that the failure mode was the same shape as the others this
+project keeps finding, just in the infrastructure rather than the model: a
+thing that reported success at launch, ran, and silently stopped doing what
+it was supposed to be doing. The difference is that this one left an error
+message saying exactly what was wrong. Most of the others did not.
+
+
 ## Decisions
 
 | Date | Decision | Reason |
