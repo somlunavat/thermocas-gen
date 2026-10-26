@@ -83,7 +83,16 @@ image = (
         "numpy==2.4.4",
         "pyyaml==6.0.3",
     )
-    .env({"HF_HOME": "/vol/hf", "TOKENIZERS_PARALLELISM": "false"})
+    .env({
+        "HF_HOME": "/vol/hf",
+        "TOKENIZERS_PARALLELISM": "false",
+        # Training and the evaluation passes have different allocation
+        # shapes, and the second ran into fragmentation left by the
+        # first rather than into real memory use. Expandable segments
+        # let the allocator grow a block instead of needing a new one
+        # of exactly the right size.
+        "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True",
+    })
     .add_local_dir(
         ".",
         remote_path="/src",

@@ -1107,6 +1107,68 @@ the 2.97 s/step figure, and this one decides whether the tail of the run is
 two hours or ten.
 
 
+## 2026-10-26 — What the gate actually costs, and three wrong guesses about why
+
+Gate 2 and the new test report are `n_shuffles + 1` passes over a split each.
+That cost had never been measured, only guessed at "about an hour", which is
+the same mistake as the 2.97 s/step figure. Measured:
+
+    7,200 sequences scored in 15.5 min (7.8 sequences/s at batch 8)
+
+So the full val + test evaluation is (15,055 + 16,952) x 6 = 192,042 sequence
+scorings, about 6.8 h on top of 9.5 h of training. That is ~$20 of a $30
+credit for one run, with nothing left for a second.
+
+7.8 sequences/s is also slower than training manages *with* a backward pass,
+which looked like a bug. Three guesses at it, in order:
+
+1. **Gradient checkpointing left on.** Real -- it trades compute for memory
+   during a backward pass, and under `no_grad` there is no backward pass, so
+   it bought nothing and still paid. Fixed: disabled around the evaluation
+   passes and restored afterwards, since training is not finished when the
+   probe runs. It made little difference to the rate.
+2. **Batch size too small.** Raised 8 -> 32, which went OOM, then 16, which
+   also went OOM once checkpointing was off. The estimate that said 32 would
+   fit reasoned from the logits, which are negligible here because ProGen2's
+   vocabulary is 35 tokens -- the real ceiling is the MLP intermediate at 4x
+   hidden, 807 MB per tensor at batch 32, several live at once inside the
+   GELU. Back to 8. Also added `empty_cache()` before evaluation and
+   `expandable_segments:True`, because 4.38 GB sat reserved-but-unallocated
+   from training while the first eval batch failed with 29 MB free.
+3. **CPU-bound tokenization in the eval loop**, which has no DataLoader
+   workers. Wrong, and cheap to check: `__getitem__` runs at 7,877 items/s
+   single-threaded, three orders of magnitude clear of the bottleneck.
+
+What is left is that the evaluation is fp32 and compute-bound, within about
+2x of the A10's fp32 roofline for this model. Not a bug -- a deliberate
+choice. The quantity being measured is a perplexity *difference* of order
+0.01-2%, and bf16 carries about three decimal digits per op. Training in
+bf16-mixed and scoring in fp32 is the right way round.
+
+bf16 would be 4-8x, and there is a decent argument it would be safe: random
+per-token rounding noise averages out over ~1.5M tokens, and the
+correct-token and shuffled-token passes see inputs differing in one position,
+so their systematic error largely cancels in the difference. That is an
+argument, not a measurement, and the way to settle it is to score one
+checkpoint in both precisions on the same subsample and check the gains agree
+to well inside the effect size. Not on the way to a first result.
+
+So the budget is handled by sampling instead, explicitly:
+`conditioning_gate/max_examples: 5000` per split, ~2.1 h rather than ~6.8 h.
+Sampling noise is not the constraint -- at 5,000 sequences the perplexity
+estimate is far tighter than the 2% threshold -- GPU budget is, and the
+distinction matters for how the number gets written up. It is a separate knob
+from the `--gate2-limit` smoke flag and prints a different line, because "a
+5,000-example subsample" and "this is not the real gate" are different
+claims. The probe subsample dropped to 500 for the same reason.
+
+One thing checked rather than assumed: the probe takes the first N validation
+examples, not a random sample, so a corpus ordered by organism could have
+handed it a single-bin subsample and made the shuffle control vacuous
+forever. The first 1,000 are 520 thermo / 480 meso. Fine here, by luck of
+corpus order rather than by design.
+
+
 ## Decisions
 
 | Date | Decision | Reason |
@@ -1116,6 +1178,9 @@ two hours or ten.
 | 2026-10-25 | Stage A re-split 0.90/0.05/0.05 to give it a test split | Validation selects the checkpoint and Gate 2 is measured on it, so with no test split the only reportable stage A number is one selection has seen |
 | 2026-10-25 | Test scored with the validation-selected checkpoint, once, at the end | Scoring the last step's weights and calling it a held-out result is the same error one layer down; the code warns when no monitored checkpoint exists |
 | 2026-10-25 | Instrument the conditioning gain every 2,500 steps rather than raise `max_steps` | A failed gate at 40,000 steps carries the same one bit as a failed gate at 20,000, for twice the cost. The curve distinguishes "cannot learn it" from "has not learned it yet" |
+| 2026-10-26 | Score Gate 2 and the test report in fp32, not the bf16 training runs in | The measured quantity is a perplexity difference of order 0.01-2% and bf16 carries ~3 decimal digits per op. Costs 4-8x; the argument that bf16 would be safe is plausible and untested |
+| 2026-10-26 | Cap the gate at 5,000 examples per split rather than score the whole thing | 192,042 sequence scorings is ~6.8 h and ~$20 of a $30 credit. The cap is a GPU budget decision, not a statistical one, and is recorded as such |
+| 2026-10-26 | Disable gradient checkpointing during evaluation, restore after | It trades compute for memory during a backward pass and there is no backward pass under no_grad |
 | 2026-10-19 | Rebuild rather than extend the prior repo | Full-length Cas9 was never in its training set and it has no leakage control; both are structural, not incremental, fixes |
 | 2026-10-19 | Primary model: pretrained autoregressive protein LM + LoRA, with a discrete growth-temperature bin token | Matches the brief's recommendation; a pretrained model is the only affordable route to 1,400-residue context on free/cheap GPU tiers |
 | 2026-10-19 | Keep the from-scratch transformer as a labeled weak baseline only | Honest comparison point; not expected to be competitive |

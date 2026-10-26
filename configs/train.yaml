@@ -56,6 +56,15 @@ batch:
   # Six passes over a 17,000-sequence split at val_size 2 is hours; this is
   # the same arithmetic with fewer kernel launches. Padding rises with the
   # batch, which costs time and not correctness: the loss is masked per token.
+  #
+  # 8, measured. 32 and 16 both went OOM on a 24 GB A10 once gradient
+  # checkpointing was turned off for the evaluation passes.
+  #
+  # The estimate that said 32 would fit reasoned from the logits, which are
+  # negligible here -- ProGen2's vocabulary is 35 tokens, where a normal LM's
+  # logits are what caps the batch. The ceiling is actually the MLP
+  # intermediate at 4x hidden: 32 x 1,027 x 6,144 in fp32 is 807 MB per
+  # tensor and the GELU holds several at once.
   eval_size: 8
 
 loss:
@@ -105,8 +114,37 @@ conditioning_gate:
   # findings and the end-of-run gate alone cannot tell them apart.
   # 1,000 examples x 6 passes is a few minutes against the hour the full
   # 15,055-sequence split costs.
-  probe_examples: 1000
+  probe_examples: 500
   probe_every_n_steps: 2500
+  # A cap on the final gate and the test report, in examples per split. 0
+  # means the whole split, which is the honest default and what this should
+  # stay at unless the arithmetic below says otherwise.
+  #
+  # This is a budget knob, not the smoke-check --gate2-limit flag, and the two
+  # print different things: a capped gate is a deliberate subsample of a
+  # stated size, and a smoke check is not a gate at all. Scoring is
+  # n_shuffles + 1 passes per split, so the full val + test evaluation is
+  # (15,055 + 16,952) x 6 = 192,042 sequence scorings, and at the measured
+  # rate that is hours. Sampling noise is not the reason to cap it -- at
+  # 5,000 sequences the perplexity estimate is already far tighter than the
+  # 2% threshold -- GPU budget is.
+  #
+  # Set to 5,000 for the first full run. Measured evaluation rate is 7.8
+  # sequences/s on an A10, which is roughly the card's fp32 roofline for this
+  # model and not a bug: the passes are deliberately fp32 (see
+  # evaluate_perplexity) and gradient checkpointing is already off. 5,000 per
+  # split costs ~2.1 h of the ~12.7 h run instead of the ~6.8 h the full
+  # splits would cost.
+  #
+  # The available 4-8x is bf16, which this declines. The argument that bf16
+  # would be safe -- that per-token rounding noise averages out over ~1.5M
+  # tokens, and that the correct-token and shuffled-token passes see nearly
+  # identical inputs so their systematic error largely cancels in the
+  # difference -- is plausible and untested. Before taking it, score one
+  # checkpoint in both precisions on the same subsample and check the gains
+  # agree to well inside the effect size. Not worth doing on the way to a
+  # first result.
+  max_examples: 5000
 
 logging:
   backend: csv             # csv | wandb

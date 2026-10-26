@@ -126,8 +126,43 @@ def evaluate_perplexity(
 
     ``bin_override`` is a per-example bin assignment, which is how the Gate 2
     shuffled comparison is run without re-tokenizing anything.
+
+    Deliberately fp32, not the bf16-mixed that training runs in. The quantity
+    being measured is a perplexity *difference* of order 0.01-2%, and bf16
+    carries about three decimal digits per op -- enough noise to be the same
+    size as the effect. Training in bf16 and scoring in fp32 is the right way
+    round; the 2x it costs is the price of the gate meaning something.
     """
     module.eval()
+    # Gradient checkpointing trades compute for memory during a backward
+    # pass. There is no backward pass here, so under no_grad it buys nothing
+    # and still pays: it was the reason evaluation ran at 7.8 sequences/s,
+    # slower than training managed *with* a backward pass. Restored
+    # afterwards, because training is not finished when the probe runs.
+    backbone = getattr(module, "backbone", None)
+    was_checkpointing = bool(getattr(backbone, "is_gradient_checkpointing", False))
+    if was_checkpointing:
+        backbone.gradient_checkpointing_disable()
+    # Training leaves the allocator holding several GB reserved but
+    # unallocated, and evaluation's allocation pattern is a different shape,
+    # so the first large eval batch OOMs against fragmentation rather than
+    # against real use: 4.38 GB reserved-unallocated with 29 MB free was how
+    # batch 16 failed.
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    try:
+        return _perplexity_loop(
+            module, dataset, tokenizer, device, bin_override, batch_size, limit
+        )
+    finally:
+        if was_checkpointing:
+            backbone.gradient_checkpointing_enable()
+
+
+@torch.no_grad()
+def _perplexity_loop(
+    module, dataset, tokenizer, device, bin_override, batch_size, limit
+):
     total_nll = 0.0
     total_tokens = 0
     n = len(dataset) if limit is None else min(limit, len(dataset))
@@ -458,8 +493,17 @@ def main() -> int:
         and a model that has merely learned the corpus scores well on both.
         """
         if not quiet and limit is not None and limit < len(dataset):
-            print(f"  WARNING evaluating on {limit} of {len(dataset)} {label} examples "
-                  "(--gate2-limit). This is a smoke check, not the real gate.")
+            if args.gate2_limit:
+                print(f"  WARNING evaluating on {limit} of {len(dataset)} {label} "
+                      "examples (--gate2-limit). This is a smoke check, not the "
+                      "real gate.")
+            else:
+                # A budgeted subsample is a different statement from a smoke
+                # check, and saying "not the real gate" about it would be
+                # wrong in the other direction.
+                print(f"  evaluating a {limit:,}-example subsample of the "
+                      f"{len(dataset):,} {label} examples "
+                      "(conditioning_gate/max_examples)")
         # Timed and reported, because the cost of these passes was guessed at
         # once and the guess was out by a factor that would have decided
         # whether the run finished. n_shuffles + 1 passes over the split is
@@ -550,7 +594,9 @@ def main() -> int:
     print("\nrunning Gate 2 on the validation split")
     module.to(device)
 
-    limit = args.gate2_limit
+    # --gate2-limit is the smoke-check override and wins when given;
+    # max_examples is the standing budget cap, and 0 means the whole split.
+    limit = args.gate2_limit or int(data_cfg["conditioning_gate/max_examples"]) or None
     result = conditioning_check(datasets["val"], "validation", limit)
     print()
     print(result.summary())
