@@ -74,24 +74,32 @@ modal token new                            # opens a browser once
 modal run cloud/modal_app.py::check        # GPU, corpus, dry run. Costs cents
 modal run cloud/modal_app.py::upload       # pushes the corpus to the volume
 modal run cloud/modal_app.py::smoke        # 50 steps; reports peak memory
-modal run cloud/modal_app.py::train        # the real run; returns immediately
-modal run cloud/modal_app.py::status --call-id fc-...   # has it finished?
 modal run cloud/modal_app.py::ls           # what is on the volume
 ```
 
-`train` spawns the job server-side and exits, so nothing local owns it and it
-is safe to close the terminal. Do not reach for `--detach` or `nohup` here:
-both were tried and both lost a run. A blocking `Function.remote()` call is
-owned by the local client while it waits, and Modal cancels the in-flight
-input when that client goes away — the first Stage A attempt died at step 314
-and the second, relaunched with `--detach`, died at step 2,149 of 20,000.
-`--detach` keeps the *app* alive, not the input. `Function.spawn()` is what
-actually fixes it.
+A long run is launched differently: deploy the app once, then spawn against
+it. `modal run` is only for the short commands above.
+
+```bash
+modal deploy cloud/modal_app.py                          # once per code change
+python3 cloud/launch.py train --max-steps 20000          # returns immediately
+python3 cloud/launch.py status --call-id fc-...          # has it finished?
+```
+
+Do not launch a long run with `modal run`, with or without `--detach` or
+`nohup`. Three runs died learning why. `modal run` creates an *ephemeral* app
+whose lifetime is its entrypoint's: a blocking `.remote()` call is cancelled
+when the local client disconnects (dead at step 314), `--detach` keeps the app
+alive but not the input (dead at step 2,149 of 20,000), and `.spawn()` fixes
+the ownership but the app still stops when the entrypoint returns and takes
+the spawned call with it (no output at all). A deployed app has no entrypoint
+and no client, so the call survives anything local. `cloud/launch.py` carries
+the full account.
 
 If a container does die, the run is resumable:
 
 ```bash
-modal run cloud/modal_app.py::train --run-name default --resume
+python3 cloud/launch.py train --run-name default --resume
 ```
 
 Checkpoints go to `checkpoints/stage_<x>/<run-name>/`, one directory per run.
@@ -122,7 +130,8 @@ data/
   splits/     cluster assignments (committed)
 scripts/      numbered pipeline stages, run in order
               00_fetch_pfam.py fetches the HMM profiles (not committed)
-cloud/        modal_app.py: GPU type, pinned versions and the run commands
+cloud/        modal_app.py: GPU type, pinned versions, the remote functions
+              launch.py: spawns a long run against the deployed app
 thermocas/
   model/      tokenizer, dataset, LightningModule, train, generate
   eval/       thermostability scoring, folding, structure metrics, controls, report

@@ -628,16 +628,26 @@ def main() -> int:
                   "being scored with the weights training ended on. That is the "
                   "last step, not a selected model; do not report it as one.")
 
-        print(f"\nheld-out test report on {len(test):,} sequences, "
-              f"cluster-disjoint from train")
+        scored_n = min(limit, len(test)) if limit else len(test)
+        print(f"\nheld-out test report on {scored_n:,} of {len(test):,} "
+              "sequences, cluster-disjoint from train")
         test_result = conditioning_check(test, "test", limit)
         print()
         print(test_result.summary())
 
+        # Records what was actually scored, not the split size. The first
+        # version of this file said "test sequences: 16952" after scoring
+        # 1,200 of them, which is the kind of line that gets quoted later by
+        # someone who did not run it.
+        provenance = best or (
+            "LAST STEP, not selected -- these weights were not chosen by validation"
+        )
         test_report = checkpoint_dir / "test_report.txt"
         test_report.write_text(
-            f"checkpoint: {best or 'LAST STEP, not selected'}\n"
-            f"test sequences: {len(test)}\n\n" + test_result.summary() + "\n"
+            f"checkpoint: {provenance}\n"
+            f"test sequences scored: {scored_n} of {len(test)} in the split\n"
+            "cluster-disjoint from train: yes\n\n"
+            + test_result.summary() + "\n"
         )
         print(f"\nwrote {test_report}")
 

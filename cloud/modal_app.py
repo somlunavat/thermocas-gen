@@ -26,27 +26,32 @@ First use::
     modal run cloud/modal_app.py::upload    # ~2 min, pushes the corpus
     modal run cloud/modal_app.py::smoke     # 50 steps, reports memory
 
-A long run goes through ``train``, which spawns::
+A long run does **not** go through ``modal run``. It goes through a deployed
+app, and ``cloud/launch.py`` spawns against it::
 
-    modal run cloud/modal_app.py::train --stage a
-    modal run cloud/modal_app.py::status --call-id fc-...
+    modal deploy cloud/modal_app.py
+    python3 cloud/launch.py train --max-steps 20000
+    python3 cloud/launch.py status --call-id fc-...
 
-No ``--detach``, and no backgrounding. Two Stage A runs were lost before this
-was understood. A blocking ``Function.remote()`` call is owned by the local
-client for as long as it waits, and Modal cancels the in-flight input when
-that client goes away -- so the run dies with the terminal, the laptop or the
-client's expiring auth. The first attempt died at step 314 ("Stopping app -
-local client disconnected"), and the second, relaunched with ``--detach`` on
-the theory that this was the fix, died at step 2,149 of 20,000 with "Received
-a cancellation signal". ``--detach`` keeps the *app* alive; it does not stop
-the input being cancelled, and the launch output says so in its first line:
-detached mode "only keeps the last triggered Modal function alive".
+``modal run`` creates an *ephemeral* app whose lifetime is its entrypoint's,
+and three runs died learning what that means. A blocking
+``Function.remote()`` call is owned by the local client while it waits, and
+Modal cancels the in-flight input when that client goes away: run 1 died at
+step 314 with "Stopping app - local client disconnected". ``--detach`` keeps
+the *app* alive but not the input: run 2 died at step 2,149 of 20,000 with
+"Received a cancellation signal". ``Function.spawn()`` fixes the ownership,
+but under ``modal run`` the app still stops when the entrypoint returns and
+takes the spawned call with it: run 3 emitted no output at all, its only log
+line being "Stopping app - local entrypoint completed".
 
-``Function.spawn()`` is the fix. The call is created server-side and returns
-an id; no client is in the loop, so nothing local can cancel it. ``_train``
-also prints its own summary rather than only returning one, because with
-nobody waiting there is no local process left to print the returned dict --
-read it back with ``status`` or ``modal app logs``.
+A deployed app has no entrypoint and no client, so a call spawned against it
+survives anything local. ``cloud/launch.py`` documents the whole sequence of
+wrong turns; the ``train`` entrypoint below refuses to run and points there,
+because it is the obvious thing to type.
+
+``_train`` prints its own summary rather than only returning one: with nobody
+waiting there is no local process to print the returned dict, so read it back
+with ``launch.py status`` or ``modal app logs``.
 
 ``check`` first. It is cheap and it fails for all the boring reasons -- no
 volume, no corpus, wrong CUDA -- that would otherwise fail ten minutes into a
@@ -54,6 +59,8 @@ paid training run.
 """
 
 from __future__ import annotations
+
+import sys
 
 import modal
 
@@ -429,60 +436,30 @@ def train(
     run_name: str = "default",
     resume: bool = False,
 ):
-    """A full run, started server-side. max_steps 0 means configs/train.yaml.
+    """Refuses to run. Long runs go through cloud/launch.py.
 
-    ``spawn`` rather than ``remote``, and this is the whole reason this
-    function is not a one-liner.
+    Kept as a signpost rather than deleted, because `modal run
+    cloud/modal_app.py::train` is what three dead runs were launched with and
+    is the obvious thing to type.
 
-    ``remote`` blocks. The local client owns the in-flight input for as long
-    as it waits, and when it goes away Modal cancels the input -- so the job
-    dies with the laptop, the ssh session or the client's expiring auth.
-    ``--detach`` does not fix that: it keeps the *app* alive, not the input.
-    Two Stage A runs were lost this way, the first at step 314 and the second
-    at step 2,149 of 20,000, both with "Received a cancellation signal" and
-    nothing wrong in the training code.
-
-    ``spawn`` creates the call server-side and returns an id. There is no
-    client in the loop to disconnect, so nothing local can cancel it. Follow
-    it with ``status`` below, or ``modal app logs``.
+    `modal run` creates an *ephemeral* app whose lifetime is this
+    entrypoint's. A blocking `.remote()` call is cancelled when the local
+    client disconnects (run 1, dead at step 314); `--detach` keeps the app
+    alive but not the input (run 2, dead at step 2,149); and `.spawn()` fixes
+    the ownership but the app still stops when this function returns and
+    takes the spawned call with it (run 3, which emitted no output at all).
     """
-    call = _train.with_options(gpu=gpu).spawn(
-        stage,
-        max_steps or None,
-        gate2_limit or None,
-        init_from or None,
-        batch_size or None,
-        [],
-        run_name,
-        resume,
+    print(
+        "not launching from here -- `modal run` apps do not outlive this "
+        "entrypoint.\n\n"
+        "Deploy the app once, then spawn against it:\n"
+        "    modal deploy cloud/modal_app.py\n"
+        "    python3 cloud/launch.py train --max-steps 20000\n"
+        "    python3 cloud/launch.py status --call-id fc-...\n\n"
+        "See cloud/launch.py for why this is not a style preference.",
+        file=sys.stderr,
     )
-    print(f"spawned {call.object_id}")
-    print("nothing local holds this job; it is safe to close the terminal.\n")
-    print("follow it:")
-    print(f"  modal run cloud/modal_app.py::status --call-id {call.object_id}")
-    print(f"  modal run cloud/modal_app.py::ls --prefix checkpoints/stage_{stage}")
-    print("\nif the container dies, the same command with --resume continues "
-          "from the last checkpoint:")
-    print(f"  modal run cloud/modal_app.py::train --stage {stage} "
-          f"--run-name {run_name} --resume")
-
-
-@app.local_entrypoint()
-def status(call_id: str):
-    """Has the spawned run finished, and what did it report?
-
-    Polls once and exits rather than waiting, so this is safe to run from
-    anywhere at any time without becoming the client that owns the job.
-    """
-    call = modal.FunctionCall.from_id(call_id)
-    try:
-        result = call.get(timeout=0)
-    except TimeoutError:
-        print(f"{call_id} is still running")
-        print("  logs:  modal app logs " + APP_NAME)
-        return
-    print(f"{call_id} finished")
-    _report(result)
+    raise SystemExit(2)
 
 
 @app.local_entrypoint()
