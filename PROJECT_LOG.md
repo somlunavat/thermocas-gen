@@ -995,10 +995,127 @@ it was supposed to be doing. The difference is that this one left an error
 message saying exactly what was wrong. Most of the others did not.
 
 
+## 2026-10-25 — The second run died the same way, and `--detach` was not the fix
+
+Relaunched with `--detach`, told the user it was now safe, and it died again
+36 minutes in at step 2,149 of 20,000:
+
+    [modal-client] Received a cancellation signal while processing input
+    [modal-client] Successfully canceled input
+    RemoteError: Function call was cancelled by user or a failure.
+
+Not OOM, not the 24 h timeout, nothing wrong in the training code -- an
+explicit cancel of the input. The diagnosis in the previous entry was wrong,
+and the launch output had been saying so all along, in its first line:
+
+    detached mode only keeps the last triggered Modal function alive after
+    the parent process has been killed or disconnected
+
+`--detach` keeps the *app* alive. It does nothing about the *input*, which is
+owned by the local client for as long as a blocking `Function.remote()` call
+waits on it; when that client goes away, Modal cancels it. `nohup` and
+`--detach` were two attempts to keep the client alive, which was never the
+thing that needed fixing.
+
+`Function.spawn()` is the fix. The call is created server-side and returns an
+id, and no client is in the loop at all, so there is nothing local that can
+cancel it. `train` now spawns and exits; `status --call-id fc-...` polls it
+without becoming its owner.
+
+Two days and two runs to find this, and both days the error message was
+specific and I read it as confirming the theory I already had. The first
+message named `--detach` and I took that as "`--detach` is the fix" rather
+than "this particular tie is one of two". The second was in the first line of
+output I had already scrolled past.
+
+Three other things came out of the post-mortem:
+
+- The `gate2_report.txt` sitting on the volume was from a 30-step throughput
+  sweep two days earlier, not from any real run, and it reported a failed
+  gate. It would have been read as a result. Runs now get their own
+  `checkpoints/stage_<x>/<run-name>/` directory.
+- 19 GB of `last.ckpt` through `last-v5.ckpt` had accumulated from smoke and
+  sweep runs sharing one directory. Lightning appends `-vN` rather than
+  overwriting, so every throwaway run left a 3 GB checkpoint that loads
+  cleanly and is indistinguishable from a real one. Deleted, and prevented
+  by the per-run directory.
+- There was no resume logic. Both dead runs had checkpoints on the volume
+  that nothing could read back. `train --resume` continues from `last.ckpt`
+  in the run's directory, and prints a note and starts from zero when there
+  is none, so relaunching after a crash is the same command either way.
+
+
+## 2026-10-25 — Stage A gets a test split, because validation was doing two jobs
+
+Stage A was configured `train: 0.95, val: 0.05, test: 0.00`, with a comment
+arguing that stage A is never evaluated on its own and exists only to
+initialize stage B.
+
+That argument has a hole. `ModelCheckpoint` monitors `val_loss` and Gate 2 is
+measured on validation, so validation both selects the checkpoint and
+produces the only number stage A could report. Any conditioning result from
+this stage would be a number that selection had already seen.
+
+Re-split to `0.90 / 0.05 / 0.05`, reusing the existing `clusters.tsv` so
+MMseqs2 did not have to run again, and cluster-disjoint by the same straddle
+check as the Cas9 stage -- the test split is not a random 5% of near
+duplicates of the training set:
+
+    train   279980 sequences   50256 clusters  [meso=163611, thermo=116369]
+    val      15055 sequences    2792 clusters  [meso=8947,  thermo=6108]
+    test     16952 sequences    2792 clusters  [meso=10406, thermo=6546]
+
+Both bins are well represented in all three, so the shuffled-label control is
+not vacuous on either held-out split. Cost is ~15,000 training sequences.
+
+Training now scores test once, at the end, with the checkpoint validation
+selected rather than the weights training happened to stop on -- and says so
+loudly when no monitored checkpoint exists, because then the test number is
+the last step's weights and is not a selected model.
+
+One thing not to trip over later: the four validation points from the dead
+2,149-step run were measured on what is now the *test* split. They are not
+comparable to the new validation numbers and must not be reported as test
+numbers.
+
+
+## 2026-10-25 — Measuring conditioning during training, not just at the end
+
+`max_steps: 20000` has been in the config since the first day, unexamined. It
+is 1.14 epochs over the re-split training corpus (17,499 steps per epoch) and
+about 9-10 h on an A10.
+
+The honest position is that nobody knows whether 1.14 epochs is enough for a
+single control token to become load-bearing through 4.5M LoRA parameters on a
+frozen backbone. The temptation was to raise the number. The problem with
+raising it is that it answers nothing: a failed gate at 40,000 steps is the
+same single bit of information as a failed gate at 20,000, bought for twice
+the money.
+
+So the run is instrumented instead. `ConditioningProbe` runs Gate 2's own
+measurement every 2,500 steps on a fixed 1,000-example validation subsample
+and prints the curve at the end. Flat from step 2,500 to 20,000 and the
+conditioning is not being learned at all; rising but short of 2% and the run
+was simply too short. Those are different findings, and the end-of-run gate
+cannot tell them apart. With `--resume` in place, extending the run is now a
+decision made on evidence rather than a budget guessed in advance.
+
+Also instrumented: the evaluation passes now time themselves and report
+sequences/s. The cost of `n_shuffles + 1` passes over a 17,000-sequence split
+had been guessed at "about an hour" and never measured -- the same mistake as
+the 2.97 s/step figure, and this one decides whether the tail of the run is
+two hours or ten.
+
+
 ## Decisions
 
 | Date | Decision | Reason |
 | --- | --- | --- |
+| 2026-10-25 | `Function.spawn()` for long runs, never `--detach` or `nohup` | A blocking `remote()` call is owned by the local client; Modal cancels the input when it disconnects. `--detach` keeps the app alive, not the input, and two runs died proving it |
+| 2026-10-25 | One checkpoint directory per run, `checkpoints/stage_<x>/<run-name>/` | Lightning appends `-vN` rather than overwriting, so shared directories accumulate stale 3 GB checkpoints that load cleanly; a sweep run's `gate2_report.txt` was already sitting where a real result would be read |
+| 2026-10-25 | Stage A re-split 0.90/0.05/0.05 to give it a test split | Validation selects the checkpoint and Gate 2 is measured on it, so with no test split the only reportable stage A number is one selection has seen |
+| 2026-10-25 | Test scored with the validation-selected checkpoint, once, at the end | Scoring the last step's weights and calling it a held-out result is the same error one layer down; the code warns when no monitored checkpoint exists |
+| 2026-10-25 | Instrument the conditioning gain every 2,500 steps rather than raise `max_steps` | A failed gate at 40,000 steps carries the same one bit as a failed gate at 20,000, for twice the cost. The curve distinguishes "cannot learn it" from "has not learned it yet" |
 | 2026-10-19 | Rebuild rather than extend the prior repo | Full-length Cas9 was never in its training set and it has no leakage control; both are structural, not incremental, fixes |
 | 2026-10-19 | Primary model: pretrained autoregressive protein LM + LoRA, with a discrete growth-temperature bin token | Matches the brief's recommendation; a pretrained model is the only affordable route to 1,400-residue context on free/cheap GPU tiers |
 | 2026-10-19 | Keep the from-scratch transformer as a labeled weak baseline only | Honest comparison point; not expected to be competitive |

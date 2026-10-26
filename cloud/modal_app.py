@@ -26,18 +26,27 @@ First use::
     modal run cloud/modal_app.py::upload    # ~2 min, pushes the corpus
     modal run cloud/modal_app.py::smoke     # 50 steps, reports memory
 
-A run of more than a few minutes needs ``--detach``::
+A long run goes through ``train``, which spawns::
 
-    modal run --detach cloud/modal_app.py::train --stage a
+    modal run cloud/modal_app.py::train --stage a
+    modal run cloud/modal_app.py::status --call-id fc-...
 
-Without it, Modal stops the app when the local client disconnects, and the
-client's auth expires after some hours. A 20,000-step run launched without
-``--detach`` died at step 314 overnight with "Stopping app - local client
-disconnected"; backgrounding the local process does not help, because the
-app's lifetime is tied to the connection and not to that process. With
-``--detach`` the local entrypoint also stops at disconnect, which is why
-``_train`` prints its own summary rather than only returning one -- read it
-back with ``modal app logs``.
+No ``--detach``, and no backgrounding. Two Stage A runs were lost before this
+was understood. A blocking ``Function.remote()`` call is owned by the local
+client for as long as it waits, and Modal cancels the in-flight input when
+that client goes away -- so the run dies with the terminal, the laptop or the
+client's expiring auth. The first attempt died at step 314 ("Stopping app -
+local client disconnected"), and the second, relaunched with ``--detach`` on
+the theory that this was the fix, died at step 2,149 of 20,000 with "Received
+a cancellation signal". ``--detach`` keeps the *app* alive; it does not stop
+the input being cancelled, and the launch output says so in its first line:
+detached mode "only keeps the last triggered Modal function alive".
+
+``Function.spawn()`` is the fix. The call is created server-side and returns
+an id; no client is in the loop, so nothing local can cancel it. ``_train``
+also prints its own summary rather than only returning one, because with
+nobody waiting there is no local process left to print the returned dict --
+read it back with ``status`` or ``modal app logs``.
 
 ``check`` first. It is cheap and it fails for all the boring reasons -- no
 volume, no corpus, wrong CUDA -- that would otherwise fail ten minutes into a
@@ -223,6 +232,8 @@ def _train(
     init_from: str | None,
     batch_size: int | None,
     extra: list[str],
+    run_name: str = "default",
+    resume: bool = False,
 ) -> dict:
     """Run scripts/11_train.py and report what it cost.
 
@@ -247,9 +258,11 @@ def _train(
 
     _prepare_repo()
 
-    argv = ["11_train.py", "--stage", stage]
+    argv = ["11_train.py", "--stage", stage, "--run-name", run_name]
     if stage == "a":
         argv.append("--skip-leakage-check")
+    if resume:
+        argv.append("--resume")
     if max_steps is not None:
         argv += ["--max-steps", str(max_steps)]
     if gate2_limit is not None:
@@ -259,6 +272,7 @@ def _train(
     if batch_size is not None:
         argv += ["--batch-size", str(batch_size)]
     argv += list(extra)
+    print(f"argv: {' '.join(argv)}", flush=True)
 
     spec = importlib.util.spec_from_file_location(
         "thermocas_train", f"{REMOTE_REPO}/scripts/11_train.py"
@@ -380,10 +394,17 @@ def smoke(
     neither. That is the point of the cadence rather than a gap in the smoke
     run -- but it does mean the first run to prove a checkpoint gets written
     is the first run past step 500.
+
+    The conditioning probe and the held-out test report are exercised, with
+    the probe interval and both evaluation sizes cut to something a smoke run
+    can afford. They are the two newest code paths, and both only otherwise
+    run after hours of training -- the worst place to discover a typo.
     """
     _report(
         _train.with_options(gpu=gpu).remote(
-            "a", steps, gate2_limit, None, batch_size or None, []
+            "a", steps, gate2_limit, None, batch_size or None,
+            ["--probe-every", "20", "--probe-examples", "32"],
+            "smoke", False,
         )
     )
 
@@ -396,18 +417,63 @@ def train(
     gate2_limit: int = 0,
     init_from: str = "",
     batch_size: int = 0,
+    run_name: str = "default",
+    resume: bool = False,
 ):
-    """A full run. max_steps 0 means whatever configs/train.yaml says."""
-    _report(
-        _train.with_options(gpu=gpu).remote(
-            stage,
-            max_steps or None,
-            gate2_limit or None,
-            init_from or None,
-            batch_size or None,
-            [],
-        )
+    """A full run, started server-side. max_steps 0 means configs/train.yaml.
+
+    ``spawn`` rather than ``remote``, and this is the whole reason this
+    function is not a one-liner.
+
+    ``remote`` blocks. The local client owns the in-flight input for as long
+    as it waits, and when it goes away Modal cancels the input -- so the job
+    dies with the laptop, the ssh session or the client's expiring auth.
+    ``--detach`` does not fix that: it keeps the *app* alive, not the input.
+    Two Stage A runs were lost this way, the first at step 314 and the second
+    at step 2,149 of 20,000, both with "Received a cancellation signal" and
+    nothing wrong in the training code.
+
+    ``spawn`` creates the call server-side and returns an id. There is no
+    client in the loop to disconnect, so nothing local can cancel it. Follow
+    it with ``status`` below, or ``modal app logs``.
+    """
+    call = _train.with_options(gpu=gpu).spawn(
+        stage,
+        max_steps or None,
+        gate2_limit or None,
+        init_from or None,
+        batch_size or None,
+        [],
+        run_name,
+        resume,
     )
+    print(f"spawned {call.object_id}")
+    print("nothing local holds this job; it is safe to close the terminal.\n")
+    print("follow it:")
+    print(f"  modal run cloud/modal_app.py::status --call-id {call.object_id}")
+    print(f"  modal run cloud/modal_app.py::ls --prefix checkpoints/stage_{stage}")
+    print("\nif the container dies, the same command with --resume continues "
+          "from the last checkpoint:")
+    print(f"  modal run cloud/modal_app.py::train --stage {stage} "
+          f"--run-name {run_name} --resume")
+
+
+@app.local_entrypoint()
+def status(call_id: str):
+    """Has the spawned run finished, and what did it report?
+
+    Polls once and exits rather than waiting, so this is safe to run from
+    anywhere at any time without becoming the client that owns the job.
+    """
+    call = modal.FunctionCall.from_id(call_id)
+    try:
+        result = call.get(timeout=0)
+    except TimeoutError:
+        print(f"{call_id} is still running")
+        print("  logs:  modal app logs " + APP_NAME)
+        return
+    print(f"{call_id} finished")
+    _report(result)
 
 
 @app.local_entrypoint()

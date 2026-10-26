@@ -74,13 +74,30 @@ modal token new                            # opens a browser once
 modal run cloud/modal_app.py::check        # GPU, corpus, dry run. Costs cents
 modal run cloud/modal_app.py::upload       # pushes the corpus to the volume
 modal run cloud/modal_app.py::smoke        # 50 steps; reports peak memory
-modal run --detach cloud/modal_app.py::train   # the real run; --detach matters
+modal run cloud/modal_app.py::train        # the real run; returns immediately
+modal run cloud/modal_app.py::status --call-id fc-...   # has it finished?
 modal run cloud/modal_app.py::ls           # what is on the volume
 ```
 
-`--detach` is not optional for anything long: without it Modal stops the app
-when the local client disconnects, and the client's auth expires after a few
-hours. Read a detached run's output back with `modal app logs`.
+`train` spawns the job server-side and exits, so nothing local owns it and it
+is safe to close the terminal. Do not reach for `--detach` or `nohup` here:
+both were tried and both lost a run. A blocking `Function.remote()` call is
+owned by the local client while it waits, and Modal cancels the in-flight
+input when that client goes away — the first Stage A attempt died at step 314
+and the second, relaunched with `--detach`, died at step 2,149 of 20,000.
+`--detach` keeps the *app* alive, not the input. `Function.spawn()` is what
+actually fixes it.
+
+If a container does die, the run is resumable:
+
+```bash
+modal run cloud/modal_app.py::train --run-name default --resume
+```
+
+Checkpoints go to `checkpoints/stage_<x>/<run-name>/`, one directory per run.
+Sharing one directory is what left 19 GB of `last-v1.ckpt` … `last-v5.ckpt`
+behind: Lightning appends `-vN` rather than overwriting, so stale checkpoints
+accumulate and load cleanly, indistinguishable from the real one.
 
 Add `--gpu A100-40GB` (or `L4`, `H100`) to any of those. `check` first: it
 fails for all the boring reasons that would otherwise fail ten minutes into a

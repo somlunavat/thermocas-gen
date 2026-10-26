@@ -22,12 +22,18 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 import torch  # noqa: E402
+
+# Lightning is already a module-level dependency through
+# thermocas.model.throughput, so importing the callback base here costs
+# nothing that was not already being paid.
+from lightning.pytorch.callbacks import Callback  # noqa: E402
 
 from thermocas.config import Config, GrowthTemperatureBinner  # noqa: E402
 from thermocas.model.dataset import (  # noqa: E402
@@ -39,7 +45,10 @@ from thermocas.model.dataset import (  # noqa: E402
 from thermocas.model.device import resolve_device, resolve_num_workers  # noqa: E402
 from thermocas.model.gate2 import Gate2Params, evaluate_gate2  # noqa: E402
 from thermocas.model.lit_model import ConditionedProteinLM  # noqa: E402
-from thermocas.model.throughput import ThroughputReport  # noqa: E402
+from thermocas.model.throughput import (  # noqa: E402
+    ThroughputReport,
+    format_duration,
+)
 from thermocas.model.tokenizer import PretrainedTokenizerAdapter  # noqa: E402
 
 
@@ -144,6 +153,56 @@ def evaluate_perplexity(
     return total_nll, total_tokens
 
 
+class ConditioningProbe(Callback):
+    """Gate 2's measurement, taken periodically during training.
+
+    Without this, a 20,000-step run yields one pass/fail at the end and no way
+    to tell a model that cannot learn the conditioning from one that had not
+    learned it yet. The gain curve separates those two: flat from step 2,500
+    to 20,000 is a different finding, and a different paper, from rising and
+    short of the threshold.
+
+    Cheap on purpose. A fixed subsample, the same one every time so the
+    numbers are comparable, and six forward passes over it -- minutes, against
+    the hour the full split costs. It is a trend line, not the gate; the gate
+    still runs once, on everything, at the end.
+    """
+
+    def __init__(self, check, dataset, limit: int, every_n_steps: int) -> None:
+        self.check = check
+        self.dataset = dataset
+        self.limit = limit
+        self.every_n_steps = every_n_steps
+        self.history: list[tuple[int, float]] = []
+        self._last_probed = -1
+
+    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx) -> None:
+        step = int(trainer.global_step)
+        if step == 0 or step % self.every_n_steps or step == self._last_probed:
+            return
+        self._last_probed = step
+        was_training = pl_module.training
+        result = self.check(self.dataset, "probe", self.limit, quiet=True)
+        if was_training:
+            pl_module.train()
+        self.history.append((step, result.relative_gain))
+        pl_module.log("cond_gain", result.relative_gain)
+        print(f"\n  conditioning probe at step {step}: "
+              f"gain {result.relative_gain:+.2%} on {self.limit} val examples")
+
+    def report(self) -> str:
+        if not self.history:
+            return "conditioning probe: never ran"
+        lines = ["conditioning gain over training (probe subsample, not the gate):"]
+        lines += [f"  step {step:>6}  {gain:+.3%}" for step, gain in self.history]
+        first, last = self.history[0][1], self.history[-1][1]
+        lines.append(
+            f"  {'rising' if last > first else 'flat or falling'} "
+            f"from {first:+.3%} to {last:+.3%}"
+        )
+        return "\n".join(lines)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -159,9 +218,38 @@ def main() -> int:
         help="override batch/size. For finding the largest batch a GPU fits; "
              "the value that is actually used belongs in configs/train.yaml",
     )
+    parser.add_argument(
+        "--run-name",
+        default="default",
+        help="checkpoints go to <checkpoint dir>/stage_<x>/<run-name>. Give smoke "
+             "runs and sweeps their own name: Lightning appends -v1, -v2 ... when a "
+             "last.ckpt is already there rather than overwriting it, so runs sharing "
+             "a directory leave stale checkpoints that load cleanly and are "
+             "indistinguishable from the real one.",
+    )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="continue from last.ckpt in this run's checkpoint directory, if one is "
+             "there. Starts from scratch with a note when it is not, so a relaunch "
+             "after a container dies is the same command either way.",
+    )
     parser.add_argument("--skip-leakage-check", action="store_true",
                         help="only for stage A, which has no Cas9 test split")
     parser.add_argument("--dry-run", action="store_true", help="build everything, train nothing")
+    parser.add_argument(
+        "--probe-every",
+        type=int,
+        default=None,
+        help="override conditioning_gate/probe_every_n_steps. Exists so a smoke "
+             "run can exercise the probe without 2,500 steps of training.",
+    )
+    parser.add_argument(
+        "--probe-examples",
+        type=int,
+        default=None,
+        help="override conditioning_gate/probe_examples",
+    )
     parser.add_argument(
         "--gate2-limit",
         type=int,
@@ -211,7 +299,10 @@ def main() -> int:
 
     # Data.
     try:
-        datasets = build_datasets(stage_cfg, data_cfg, tokenizer, model_cfg, args.model)
+        datasets = build_datasets(
+            stage_cfg, data_cfg, tokenizer, model_cfg, args.model,
+            split_names=("train", "val", "test"),
+        )
     except (FileNotFoundError, ValueError) as exc:
         print(f"\ncould not build datasets: {exc}", file=sys.stderr)
         return 1
@@ -310,7 +401,21 @@ def main() -> int:
             collate_fn=lambda b: collate(b, tokenizer.pad_id),
         )
 
-    checkpoint_dir = Path(str(data_cfg["checkpoint/dir"])) / f"stage_{args.stage}"
+    checkpoint_dir = (
+        Path(str(data_cfg["checkpoint/dir"])) / f"stage_{args.stage}" / args.run_name
+    )
+
+    # Resume is resolved before the trainer is built so that a missing
+    # checkpoint is a printed note here rather than an exception thrown from
+    # inside fit after the model is already on the GPU.
+    resume_from = None
+    if args.resume:
+        candidate = checkpoint_dir / "last.ckpt"
+        if candidate.is_file():
+            resume_from = candidate
+            print(f"resuming from {candidate}")
+        else:
+            print(f"--resume given but no {candidate}; starting from step 0")
 
     # The checkpoint callback monitors a validation metric, so validation has
     # to have run by the time it fires. Lightning does not complain when it
@@ -342,6 +447,58 @@ def main() -> int:
         epoch_examples=len(datasets["train"]),
     )
 
+    device = spec.torch_device
+    eval_batch_size = int(data_cfg["batch/eval_size"])
+
+    def conditioning_check(dataset, label: str, limit: int | None, quiet: bool = False):
+        """Perplexity with the correct control token against shuffled ones.
+
+        The shuffled runs are the control the whole claim rests on: a model
+        that ignores its growth-temperature token scores the same either way,
+        and a model that has merely learned the corpus scores well on both.
+        """
+        if not quiet and limit is not None and limit < len(dataset):
+            print(f"  WARNING evaluating on {limit} of {len(dataset)} {label} examples "
+                  "(--gate2-limit). This is a smoke check, not the real gate.")
+        # Timed and reported, because the cost of these passes was guessed at
+        # once and the guess was out by a factor that would have decided
+        # whether the run finished. n_shuffles + 1 passes over the split is
+        # the single largest block of GPU time after training itself.
+        started = time.monotonic()
+        scored = (min(limit, len(dataset)) if limit else len(dataset)) * (
+            gate2.n_shuffles + 1
+        )
+        true_pair = evaluate_perplexity(
+            module, dataset, tokenizer, device,
+            batch_size=eval_batch_size, limit=limit,
+        )
+        runs = []
+        for index in range(gate2.n_shuffles):
+            assignment = dataset.with_shuffled_labels(
+                rng_seed=int(data_cfg["seed"]) + index
+            )
+            runs.append(
+                evaluate_perplexity(
+                    module, dataset, tokenizer, device, bin_override=assignment,
+                    batch_size=eval_batch_size, limit=limit,
+                )
+            )
+        elapsed = time.monotonic() - started
+        if not quiet:
+            print(f"  {scored:,} sequences scored in {format_duration(elapsed)} "
+                  f"({scored / max(elapsed, 1e-6):.1f} sequences/s at batch "
+                  f"{eval_batch_size})")
+        return evaluate_gate2(*true_pair, runs, gate2)
+
+    probe = ConditioningProbe(
+        conditioning_check,
+        datasets["val"],
+        limit=args.probe_examples or int(data_cfg["conditioning_gate/probe_examples"]),
+        every_n_steps=(
+            args.probe_every or int(data_cfg["conditioning_gate/probe_every_n_steps"])
+        ),
+    )
+
     trainer = L.Trainer(
         accelerator=spec.accelerator,
         precision=spec.precision,
@@ -362,13 +519,19 @@ def main() -> int:
             ),
             LearningRateMonitor(logging_interval="step"),
             throughput,
+            probe,
         ],
         logger=CSVLogger("logs", name=f"stage_{args.stage}"),
         enable_progress_bar=True,
     )
 
     L.seed_everything(int(data_cfg["seed"]), workers=True)
-    trainer.fit(module, loader("train", True), loader("val", False))
+    trainer.fit(
+        module,
+        loader("train", True),
+        loader("val", False),
+        ckpt_path=str(resume_from) if resume_from else None,
+    )
 
     # Printed before Gate 2, which is itself minutes of GPU time and would
     # otherwise push the throughput figures out of sight above the gate's
@@ -381,27 +544,14 @@ def main() -> int:
         print("\nGate 2 disabled in config; skipping the conditioning check")
         return 0
 
+    print()
+    print(probe.report())
+
     print("\nrunning Gate 2 on the validation split")
-    device = spec.torch_device
     module.to(device)
-    val = datasets["val"]
 
     limit = args.gate2_limit
-    if limit is not None and limit < len(val):
-        print(f"  WARNING evaluating on {limit} of {len(val)} validation examples "
-              "(--gate2-limit). This is a smoke check, not the real gate.")
-
-    true_nll, true_tokens = evaluate_perplexity(module, val, tokenizer, device, limit=limit)
-    shuffled_runs = []
-    for index in range(gate2.n_shuffles):
-        assignment = val.with_shuffled_labels(rng_seed=int(data_cfg["seed"]) + index)
-        shuffled_runs.append(
-            evaluate_perplexity(
-                module, val, tokenizer, device, bin_override=assignment, limit=limit
-            )
-        )
-
-    result = evaluate_gate2(true_nll, true_tokens, shuffled_runs, gate2)
+    result = conditioning_check(datasets["val"], "validation", limit)
     print()
     print(result.summary())
 
@@ -409,6 +559,41 @@ def main() -> int:
     report.parent.mkdir(parents=True, exist_ok=True)
     report.write_text(result.summary() + "\n")
     print(f"\nwrote {report}")
+
+    # The held-out number. Validation chose the checkpoint and validation is
+    # what Gate 2 just decided on, so validation cannot also be the figure the
+    # paper reports -- selection has seen it. Test is scored once, here, with
+    # the checkpoint validation picked rather than the last step's weights.
+    test = datasets.get("test")
+    if test is None or not len(test):
+        print("\nno test split for this stage; nothing held out to report")
+    else:
+        best = getattr(trainer.checkpoint_callback, "best_model_path", "") or ""
+        if best and Path(best).is_file():
+            state = torch.load(best, map_location="cpu")
+            module.load_state_dict(state["state_dict"])
+            module.to(device)
+            score = getattr(trainer.checkpoint_callback, "best_model_score", None)
+            print(f"\nloaded the checkpoint validation selected: {best}")
+            if score is not None:
+                print(f"  its {data_cfg['checkpoint/monitor']} was {float(score):.4f}")
+        else:
+            print("\nWARNING no monitored checkpoint was saved, so the test split is "
+                  "being scored with the weights training ended on. That is the "
+                  "last step, not a selected model; do not report it as one.")
+
+        print(f"\nheld-out test report on {len(test):,} sequences, "
+              f"cluster-disjoint from train")
+        test_result = conditioning_check(test, "test", limit)
+        print()
+        print(test_result.summary())
+
+        test_report = checkpoint_dir / "test_report.txt"
+        test_report.write_text(
+            f"checkpoint: {best or 'LAST STEP, not selected'}\n"
+            f"test sequences: {len(test)}\n\n" + test_result.summary() + "\n"
+        )
+        print(f"\nwrote {test_report}")
 
     if not result.passed and gate2.fail_on_violation:
         return 3

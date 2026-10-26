@@ -29,6 +29,21 @@ optim:
   betas: [0.9, 0.999]
   scheduler: cosine_with_warmup
   warmup_steps: 200
+  # 20,000 steps x batch 1 x accumulate 16 = 320,000 sequences, which is 1.14
+  # epochs over the 279,980-sequence stage A training split (17,499 steps per
+  # epoch). About 9-10 h on an A10.
+  #
+  # This number is a starting budget, not a claim that 1.14 epochs is enough.
+  # Nothing here establishes how long a single control token takes to become
+  # load-bearing through 4.5M LoRA parameters on a frozen backbone, and the
+  # one run that got anywhere died at step 2,149 with the learning rate still
+  # near its peak -- too early to read. So the run is instrumented instead of
+  # the budget being guessed upward: the conditioning probe below reports the
+  # gain every 2,500 steps, and `train --resume` continues from the last
+  # checkpoint. If the curve is still rising at step 20,000 the run gets
+  # extended on evidence; if it is flat from 2,500 onward, more steps are not
+  # the missing ingredient and a longer budget would only have cost more to
+  # learn the same thing.
   max_steps: 20000
   grad_clip: 1.0
 
@@ -36,6 +51,12 @@ batch:
   size: 1                  # a 1,536-token Cas9 is large; scale on the GPU
   accumulate_grad_batches: 16
   val_size: 2
+  # Gate 2 and the held-out test report are forward-only, so they hold no
+  # activations for a backward pass and fit a larger batch than training.
+  # Six passes over a 17,000-sequence split at val_size 2 is hours; this is
+  # the same arithmetic with fewer kernel launches. Padding rises with the
+  # batch, which costs time and not correctness: the loss is masked per token.
+  eval_size: 8
 
 loss:
   # Weight on the auxiliary OGT regression head, if model.yaml enables it.
@@ -77,6 +98,15 @@ conditioning_gate:
   min_perplexity_gain: 0.02     # relative: (ppl_shuffled - ppl_true) / ppl_shuffled
   n_shuffles: 5
   fail_on_violation: true
+  # The same measurement, taken during training on a fixed subsample, so a
+  # failed gate comes with a curve rather than a single number. Flat from the
+  # first probe to the last says the conditioning is not being learned at all;
+  # rising but short of 2% says the run was too short. Those are different
+  # findings and the end-of-run gate alone cannot tell them apart.
+  # 1,000 examples x 6 passes is a few minutes against the hour the full
+  # 15,055-sequence split costs.
+  probe_examples: 1000
+  probe_every_n_steps: 2500
 
 logging:
   backend: csv             # csv | wandb

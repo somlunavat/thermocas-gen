@@ -75,10 +75,16 @@ cluster:
   cluster_mode: 0
 
 split:
-  fractions: {train: 0.95, val: 0.05, test: 0.00}
-  # Stage A has no test split: it is not evaluated on its own, it exists to
-  # initialize stage B. All held-out evaluation happens on the Cas9 corpus,
-  # where the controls and the structural metrics live.
+  fractions: {train: 0.90, val: 0.05, test: 0.05}
+  # This was 0.95/0.05/0.00 on the argument that stage A is never evaluated on
+  # its own, only used to initialize stage B. That argument was wrong in one
+  # specific way: validation is what ModelCheckpoint monitors and what Gate 2
+  # is measured on, so with no test split the only stage A number the paper
+  # could report would be one that selection had already seen. A 5% test
+  # split costs ~15,000 training sequences and buys a held-out number for the
+  # conditioning claim. It is still cluster-disjoint from train, by the same
+  # straddle check as the Cas9 stage, so it is not a random 5% of near
+  # duplicates.
   holdout_subfamily: null
   holdout_positive_controls: false
   positive_controls: []

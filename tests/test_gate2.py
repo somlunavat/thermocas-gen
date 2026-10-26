@@ -172,3 +172,134 @@ class TestEvaluate:
             true_nll=200.0, true_tokens=200, shuffled_runs=[(230.0, 200)] * 5, params=params()
         )
         assert result.passed
+
+
+class TestConditioningProbe:
+    """The probe that turns one end-of-run pass/fail into a curve.
+
+    It lives in scripts/11_train.py rather than the package, so it is loaded
+    the way the Modal launcher loads that script. Worth testing despite the
+    awkward import: its failure mode is silence, which is the failure mode
+    this project keeps finding.
+    """
+
+    @staticmethod
+    def probe_class():
+        import importlib.util
+        from pathlib import Path
+
+        path = Path(__file__).resolve().parent.parent / "scripts" / "11_train.py"
+        spec = importlib.util.spec_from_file_location("thermocas_train_probe", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module.ConditioningProbe
+
+    class FakeResult:
+        def __init__(self, gain):
+            self.relative_gain = gain
+
+    class FakeTrainer:
+        def __init__(self, step):
+            self.global_step = step
+
+    class FakeModule:
+        def __init__(self):
+            self.training = True
+            self.logged = {}
+            self.train_called = 0
+
+        def train(self):
+            self.training = True
+            self.train_called += 1
+
+        def log(self, key, value):
+            self.logged[key] = value
+
+    def build(self, gains, every_n_steps=100):
+        calls = []
+
+        def check(dataset, label, limit, quiet=False):
+            calls.append((label, limit, quiet))
+            return TestConditioningProbe.FakeResult(gains[len(calls) - 1])
+
+        probe = self.probe_class()(
+            check, dataset=["a", "b"], limit=2, every_n_steps=every_n_steps
+        )
+        return probe, calls
+
+    def fire(self, probe, module, step):
+        probe.on_train_batch_end(self.FakeTrainer(step), module, None, None, 0)
+
+    def test_it_does_not_run_between_intervals(self):
+        probe, calls = self.build([0.01])
+        module = self.FakeModule()
+        for step in (1, 50, 99, 101):
+            self.fire(probe, module, step)
+        assert calls == []
+
+    def test_it_runs_on_the_interval(self):
+        probe, calls = self.build([0.01, 0.02])
+        module = self.FakeModule()
+        self.fire(probe, module, 100)
+        self.fire(probe, module, 200)
+        assert len(calls) == 2
+        assert [step for step, _ in probe.history] == [100, 200]
+
+    def test_it_never_probes_step_zero(self):
+        """Lightning calls the hook with global_step 0 before any optimizer
+        step, and 0 % anything is 0."""
+        probe, calls = self.build([0.01])
+        self.fire(probe, self.FakeModule(), 0)
+        assert calls == []
+
+    def test_it_does_not_probe_the_same_step_twice(self):
+        """With gradient accumulation the hook fires once per batch while
+        global_step stays put, so the interval alone is not enough."""
+        probe, calls = self.build([0.01, 0.02])
+        module = self.FakeModule()
+        self.fire(probe, module, 100)
+        self.fire(probe, module, 100)
+        assert len(calls) == 1
+
+    def test_it_puts_the_model_back_in_train_mode(self):
+        """evaluate_perplexity calls module.eval() and Lightning does not
+        restore it. Training the rest of the run in eval mode would disable
+        dropout silently and be invisible in the loss curve."""
+        probe, _ = self.build([0.01])
+        module = self.FakeModule()
+        self.fire(probe, module, 100)
+        assert module.train_called == 1
+        assert module.training is True
+
+    def test_it_asks_for_a_quiet_check(self):
+        """The probe runs eight times in a real run; the smoke-check warning
+        and the timing line belong to the gate, not to every probe."""
+        probe, calls = self.build([0.01])
+        self.fire(probe, self.FakeModule(), 100)
+        assert calls[0][2] is True
+
+    def test_it_logs_the_gain_as_a_metric(self):
+        probe, _ = self.build([0.0123])
+        module = self.FakeModule()
+        self.fire(probe, module, 100)
+        assert module.logged["cond_gain"] == 0.0123
+
+    def test_the_report_calls_a_rising_curve_rising(self):
+        probe, _ = self.build([0.001, 0.004, 0.009])
+        module = self.FakeModule()
+        for step in (100, 200, 300):
+            self.fire(probe, module, step)
+        assert "rising" in probe.report()
+
+    def test_the_report_calls_a_flat_curve_flat(self):
+        """The distinction the probe exists to make: a flat curve means more
+        steps are not the missing ingredient."""
+        probe, _ = self.build([0.004, 0.004, 0.003])
+        module = self.FakeModule()
+        for step in (100, 200, 300):
+            self.fire(probe, module, step)
+        assert "flat or falling" in probe.report()
+
+    def test_the_report_says_so_when_it_never_ran(self):
+        probe, _ = self.build([])
+        assert "never ran" in probe.report()

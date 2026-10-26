@@ -220,12 +220,28 @@ class TestCas9Exclusion:
 
 
 class TestAgainstShippedConfigs:
-    def test_stage_a_splits_have_no_test_set(self):
-        """Stage A is not evaluated on its own; all held-out evaluation
-        happens on the Cas9 corpus where the controls live."""
+    def test_stage_a_has_a_test_split(self):
+        """Stage A needs a held-out split of its own.
+
+        This asserted ``test == 0.0`` until 2026-10-25, on the argument that
+        stage A only exists to initialize stage B. The hole in that argument:
+        ModelCheckpoint monitors val_loss and Gate 2 is measured on
+        validation, so with no test split the only stage A number that could
+        be reported is one selection has already seen.
+        """
         cfg = Config.load("pretrain")
-        assert cfg["split/fractions/test"] == 0.0
-        assert cfg["split/fractions/train"] + cfg["split/fractions/val"] == 1.0
+        assert cfg["split/fractions/test"] > 0.0
+        total = (
+            cfg["split/fractions/train"]
+            + cfg["split/fractions/val"]
+            + cfg["split/fractions/test"]
+        )
+        assert total == 1.0
+
+    def test_stage_a_test_split_is_big_enough_to_measure_conditioning(self):
+        """Gate 2's control is a label shuffle, which needs both bins present
+        in useful numbers. A 1% test split would make it noise."""
+        assert Config.load("pretrain")["split/fractions/test"] >= 0.02
 
     def test_stage_a_does_not_hold_out_positive_controls(self):
         cfg = Config.load("pretrain")
