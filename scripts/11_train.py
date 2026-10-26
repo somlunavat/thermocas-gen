@@ -267,7 +267,10 @@ def main() -> int:
         action="store_true",
         help="continue from last.ckpt in this run's checkpoint directory, if one is "
              "there. Starts from scratch with a note when it is not, so a relaunch "
-             "after a container dies is the same command either way.",
+             "after a container dies is the same command either way. NOTE: the "
+             "dataloader is not resumable, so a resumed run re-reads the epoch from "
+             "the start -- it is a recovery mechanism, not equivalent to an "
+             "uninterrupted run, and a run that used it has to say so.",
     )
     parser.add_argument("--skip-leakage-check", action="store_true",
                         help="only for stage A, which has no Cas9 test split")
@@ -449,6 +452,14 @@ def main() -> int:
         if candidate.is_file():
             resume_from = candidate
             print(f"resuming from {candidate}")
+            # Said at the top of every resumed run, because the consequence is
+            # a property of the results and not of the infrastructure.
+            print(
+                "  NOTE the dataloader is not resumable: this run restarts the\n"
+                "  epoch from the beginning, so it will see early examples twice\n"
+                "  and some later ones not at all. Step count is preserved;\n"
+                "  data coverage is not. Report this run as resumed."
+            )
         else:
             print(f"--resume given but no {candidate}; starting from step 0")
 

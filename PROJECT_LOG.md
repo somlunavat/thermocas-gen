@@ -1169,6 +1169,47 @@ forever. The first 1,000 are 520 thermo / 480 meso. Fine here, by luck of
 corpus order rather than by design.
 
 
+## 2026-10-26 — Verified the launch path on the GPU before spending twelve hours on it
+
+Four code paths only ever execute after hours of training, which is the worst
+place to find a typo. Checked each on short real runs first, ~$1 in total:
+
+- `spawn` against the deployed app, polled with no client in between:
+  reported "still running". This is the fix for three dead runs, and it is now
+  confirmed by behaviour rather than by reading the docs.
+- `status` returned the result dict from a finished call.
+- A monitored checkpoint appeared at step 500, and the test report loaded it:
+  "loaded the checkpoint validation selected: .../epoch=0-step=500.ckpt, its
+  val_loss was 1.5138". This branch needs a monitored checkpoint to exist, so
+  no 50-step smoke run can reach it; a 520-step run can.
+- `--resume` restored from `last.ckpt` and continued to `max_steps`.
+
+Evaluation holds at 7.5-8.9 sequences/s across every split and batch measured,
+and peak memory came down to 10.1 GB of 23.7 after `empty_cache()` and
+`expandable_segments`.
+
+The resume check turned up something that is a property of the results rather
+than of the plumbing:
+
+    You're resuming from a checkpoint that ended before the epoch ended and
+    your dataloader is not resumable. This can cause unreliable results if
+    further training is done.
+
+True, and it matters. The dataloader has no `state_dict`, so a resumed run
+restarts the epoch from the beginning: it re-reads examples it has already
+trained on and never reaches ones it would have. Step count is preserved; data
+coverage is not. Over a 1.14-epoch run, resuming at step 10,000 would mean the
+back half re-covers the front half.
+
+Not fixed, because resume is the recovery path and not the plan, and making the
+dataloader resumable means a `state_dict`/`load_state_dict` on the sampler --
+worth doing if resume ever becomes routine. Handled instead by making it
+impossible to forget: the flag's help text says it, and a resumed run prints a
+four-line notice at startup saying the run must be reported as resumed. An
+uninterrupted run and a resumed one are different experiments, and the
+difference is invisible in the loss curve.
+
+
 ## Decisions
 
 | Date | Decision | Reason |
@@ -1181,6 +1222,8 @@ corpus order rather than by design.
 | 2026-10-26 | Score Gate 2 and the test report in fp32, not the bf16 training runs in | The measured quantity is a perplexity difference of order 0.01-2% and bf16 carries ~3 decimal digits per op. Costs 4-8x; the argument that bf16 would be safe is plausible and untested |
 | 2026-10-26 | Cap the gate at 5,000 examples per split rather than score the whole thing | 192,042 sequence scorings is ~6.8 h and ~$20 of a $30 credit. The cap is a GPU budget decision, not a statistical one, and is recorded as such |
 | 2026-10-26 | Disable gradient checkpointing during evaluation, restore after | It trades compute for memory during a backward pass and there is no backward pass under no_grad |
+| 2026-10-26 | Verify the checkpoint-save, checkpoint-load and resume paths on short GPU runs before the long one | All three first execute only after hours of training. ~$1 of 520-step runs against a possible 12-hour loss |
+| 2026-10-26 | Accept a non-resumable dataloader, but make a resumed run announce itself | Resume restarts the epoch, so coverage differs from an uninterrupted run. Fixing it means a resumable sampler; recording it costs nothing and the difference is invisible in the loss curve |
 | 2026-10-19 | Rebuild rather than extend the prior repo | Full-length Cas9 was never in its training set and it has no leakage control; both are structural, not incremental, fixes |
 | 2026-10-19 | Primary model: pretrained autoregressive protein LM + LoRA, with a discrete growth-temperature bin token | Matches the brief's recommendation; a pretrained model is the only affordable route to 1,400-residue context on free/cheap GPU tiers |
 | 2026-10-19 | Keep the from-scratch transformer as a labeled weak baseline only | Honest comparison point; not expected to be competitive |
