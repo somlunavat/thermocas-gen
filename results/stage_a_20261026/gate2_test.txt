@@ -1,0 +1,11 @@
+checkpoint: /__modal/volumes/vo-TLzhuxHSjQsyZwUOiWhbG7/checkpoints/stage_a/default/epoch=1-step=17500.ckpt
+test sequences scored: 5000 of 16952 in the split
+cluster-disjoint from train: yes
+
+perplexity with the correct growth-temperature token: 3.4071
+perplexity with shuffled tokens: 3.4164 (mean of 5)
+  individual shuffles: 3.4165, 3.4166, 3.4164, 3.4160, 3.4165
+relative gain: +0.27% (required +2.00%)
+beats every shuffle: True
+GATE 2 FAILED
+The model is not using its growth-temperature token. Generating from it would produce sequences whose target temperature had no influence. Debug the conditioning before generating anything: check that the control token is not masked out of the loss, that label dropout is below 1.0, and that the training bins are not degenerate.

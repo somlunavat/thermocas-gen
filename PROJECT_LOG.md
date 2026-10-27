@@ -1210,6 +1210,97 @@ uninterrupted run and a resumed one are different experiments, and the
 difference is invisible in the loss curve.
 
 
+## 2026-10-26 — Stage A, 20,000 steps: the conditioning is real, and about eight times too small
+
+The first Stage A run to finish. 20,000 optimizer steps, 1.14 epochs over
+279,980 sequences, 18.85 h on an A10, exit 3.
+
+Training worked. Validation perplexity fell from 4.41 to 3.44 and the best
+`val_loss` was 1.4996 at step 17,500. This is not a broken run.
+
+The conditioning did not.
+
+    Gate 2, validation, 5,000 of 15,055 sequences
+      correct growth-temperature token   3.4373
+      shuffled (mean of 5)               3.4464
+      individual shuffles  3.4464, 3.4465, 3.4464, 3.4463, 3.4466
+      relative gain  +0.26%   (required +2.00%)   beats every shuffle
+
+    Held-out test, 5,000 of 16,952 sequences, cluster-disjoint from train,
+    scored with the checkpoint validation selected (epoch=1-step=17500)
+      correct growth-temperature token   3.4071
+      shuffled (mean of 5)               3.4164
+      individual shuffles  3.4165, 3.4166, 3.4164, 3.4160, 3.4165
+      relative gain  +0.27%   (required +2.00%)   beats every shuffle
+
+Three things are worth separating here, because they are easy to collapse into
+"it did not work".
+
+**The effect is real.** The five shuffles span 0.0006. The correct-token
+perplexity sits about thirty times that spread below them, and beats 5 of 5
+shuffles on both splits. The model is not ignoring the token. Whatever else is
+true, the control token carries genuine information.
+
+**The effect generalizes.** Test +0.27% against validation +0.26%, on a
+cluster-disjoint split scored once with the validation-selected checkpoint.
+This is the number the test split was carved out to produce, and it says the
+0.26% is not a selection artifact or a split artifact. It is a property of the
+model.
+
+**The effect is roughly 7.4x too small**, and more training will not close
+that. This is what the probe was built to establish:
+
+    step   2500  +0.251%
+    step   5000  +0.273%
+    step   7500  +0.300%
+    step  10000  +0.251%
+    step  12500  +0.293%
+    step  15000  +0.288%
+    step  17500  +0.281%
+    step  20000  +0.291%
+
+The plateau is reached by step 2,500 -- 14% of the run. The remaining 17,500
+steps, about 14 h and $16 of GPU, bought no additional conditioning. "The run
+was too short" is ruled out, which is the one hypothesis that would otherwise
+have justified spending the rest of the budget on a longer run.
+
+The most likely explanation is not a bug. A growth-temperature label is a
+property of an *organism*, and it is being used to condition the generation of
+an individual *protein*. Most proteins in a thermophile are not notably
+thermostable, so `thermo` as a prefix token genuinely does not predict much
+about the next residue. +0.26% may be close to the real information content of
+an organism-level binary label about an arbitrary protein from that organism.
+That is a finding about the experimental design rather than about the code, and
+it is the thing to test next -- the sharpest cheap test being whether the
+auxiliary OGT head can predict growth temperature from sequence at all.
+
+Two of my own errors in this run, both of the same kind: a number produced by
+my own instrumentation, trusted without checking what it was measuring.
+
+**The throughput projection was out by 1.8x.** Quoted 1.7 s/step and 9.5 h;
+actual 3.02 s/step and 16.8 h of fit, 18.85 h of wall clock, about $21 rather
+than the $14 I said. The 1.7 came from a 30-step sweep, and `ThroughputReport`
+prints "measured over a short run, so the projection carries the warmup and
+the first-batch costs with it" -- a warning written in this project, for this
+reason, and then ignored.
+
+**The probe's own verdict line was misleading, and in the expensive
+direction.** It compared the first probe to the last and printed "rising from
++0.251% to +0.291%". True of two points, false of the curve, and precisely the
+sentence that would have justified buying more steps. Replaced with a
+comparison of the half-to-half change against the step-to-step jitter, which
+calls this curve FLAT; the first replacement was also wrong, using total range
+as the noise estimate, which calls every smooth trend flat and was caught only
+by testing it against synthetic rising and falling curves. The real curve is
+now a regression test in `tests/test_gate2.py`.
+
+Results kept in `results/stage_a_20261026/`.
+
+Budget: this run and the day's measurement runs consumed roughly $25 of the
+$30 credit. Whatever comes next has to fit in about $5, which rules out
+another long training run and argues for the cheap diagnostics anyway.
+
+
 ## Decisions
 
 | Date | Decision | Reason |
@@ -1224,6 +1315,9 @@ difference is invisible in the loss curve.
 | 2026-10-26 | Disable gradient checkpointing during evaluation, restore after | It trades compute for memory during a backward pass and there is no backward pass under no_grad |
 | 2026-10-26 | Verify the checkpoint-save, checkpoint-load and resume paths on short GPU runs before the long one | All three first execute only after hours of training. ~$1 of 520-step runs against a possible 12-hour loss |
 | 2026-10-26 | Accept a non-resumable dataloader, but make a resumed run announce itself | Resume restarts the epoch, so coverage differs from an uninterrupted run. Fixing it means a resumable sampler; recording it costs nothing and the difference is invisible in the loss curve |
+| 2026-10-26 | Do not extend the Stage A run, despite a failed gate | The probe curve plateaus by step 2,500 of 20,000, so the one hypothesis a longer run would test is already ruled out |
+| 2026-10-26 | Judge the probe curve by half-to-half change against step-to-step jitter | Comparing endpoints called a plateau "rising", which is the sentence that justifies spending money on more steps |
+| 2026-10-26 | Hold Stage B until the conditioning is understood | Fine-tuning Cas9 from a backbone that conditions at +0.26% would inherit the problem and obscure its cause |
 | 2026-10-19 | Rebuild rather than extend the prior repo | Full-length Cas9 was never in its training set and it has no leakage control; both are structural, not incremental, fixes |
 | 2026-10-19 | Primary model: pretrained autoregressive protein LM + LoRA, with a discrete growth-temperature bin token | Matches the brief's recommendation; a pretrained model is the only affordable route to 1,400-residue context on free/cheap GPU tiers |
 | 2026-10-19 | Keep the from-scratch transformer as a labeled weak baseline only | Honest comparison point; not expected to be competitive |

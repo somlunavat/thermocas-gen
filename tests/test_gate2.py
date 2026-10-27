@@ -284,21 +284,48 @@ class TestConditioningProbe:
         self.fire(probe, module, 100)
         assert module.logged["cond_gain"] == 0.0123
 
-    def test_the_report_calls_a_rising_curve_rising(self):
-        probe, _ = self.build([0.001, 0.004, 0.009])
+    def curve(self, gains):
+        probe, _ = self.build(gains, every_n_steps=2500)
         module = self.FakeModule()
-        for step in (100, 200, 300):
-            self.fire(probe, module, step)
-        assert "rising" in probe.report()
+        for i in range(len(gains)):
+            self.fire(probe, module, 2500 * (i + 1))
+        return probe.report()
 
-    def test_the_report_calls_a_flat_curve_flat(self):
-        """The distinction the probe exists to make: a flat curve means more
-        steps are not the missing ingredient."""
-        probe, _ = self.build([0.004, 0.004, 0.003])
-        module = self.FakeModule()
-        for step in (100, 200, 300):
-            self.fire(probe, module, step)
-        assert "flat or falling" in probe.report()
+    def test_the_report_calls_a_rising_curve_rising(self):
+        report = self.curve([0.001, 0.004, 0.009, 0.013, 0.016, 0.019, 0.022, 0.026])
+        assert "RISING" in report
+
+    def test_the_report_calls_a_falling_curve_falling(self):
+        report = self.curve([0.020, 0.018, 0.016, 0.014, 0.012, 0.010, 0.008, 0.006])
+        assert "FALLING" in report
+
+    def test_the_report_calls_the_first_real_runs_curve_flat(self):
+        """The regression this verdict exists for.
+
+        These are the measured gains from the 20,000-step Stage A run of
+        2026-10-26. Comparing only the endpoints called it "rising from
+        +0.251% to +0.291%", which is true of two points and false of the
+        run -- and is the sentence that would have justified buying more
+        steps. The plateau is reached by step 2,500.
+        """
+        report = self.curve(
+            [0.00251, 0.00273, 0.00300, 0.00251, 0.00293, 0.00288, 0.00281, 0.00291]
+        )
+        assert "FLAT" in report
+        assert "RISING" not in report
+        assert "More steps are not the missing ingredient" in report
+
+    def test_a_noisy_plateau_is_not_called_a_direction_by_its_endpoints(self):
+        """Endpoints that rise while the curve does not."""
+        report = self.curve([0.010, 0.030, 0.005, 0.028, 0.008, 0.026, 0.009, 0.012])
+        assert "FLAT" in report
+
+    def test_a_short_curve_gets_no_verdict(self):
+        """Three probes cannot distinguish a trend from jitter, so the report
+        shows the numbers and declines to characterise them."""
+        report = self.curve([0.001, 0.004, 0.009])
+        for word in ("FLAT", "RISING", "FALLING"):
+            assert word not in report
 
     def test_the_report_says_so_when_it_never_ran(self):
         probe, _ = self.build([])

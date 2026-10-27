@@ -1,0 +1,17 @@
+conditioning gain over training (probe subsample, not the gate):
+  step   2500  +0.251%
+  step   5000  +0.273%
+  step   7500  +0.300%
+  step  10000  +0.251%
+  step  12500  +0.293%
+  step  15000  +0.288%
+  step  17500  +0.281%
+  step  20000  +0.291%
+  FLAT: halves differ by +0.020%, within the 0.023% step-to-step jitter.
+  More steps are not the missing ingredient -- whatever the control
+  token can contribute, it contributed early.
+
+NOTE the run itself printed "rising from +0.251% to +0.291%" here. That
+line compared only the first probe to the last and was replaced after this
+run; it is true of two points and false of the curve. See ConditioningProbe
+in scripts/11_train.py and the regression test in tests/test_gate2.py.

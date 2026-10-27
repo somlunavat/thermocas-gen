@@ -226,15 +226,49 @@ class ConditioningProbe(Callback):
               f"gain {result.relative_gain:+.2%} on {self.limit} val examples")
 
     def report(self) -> str:
+        """The curve, and a verdict that compares the change to the scatter.
+
+        The first version of this compared only the first probe to the last,
+        which called the first real run "rising from +0.251% to +0.291%". The
+        curve behind that was 0.251, 0.273, 0.300, 0.251, 0.293, 0.288,
+        0.281, 0.291 -- a plateau reached by step 2,500 with the last point
+        below the third. "Rising" was true of the two endpoints and false of
+        the run, and it is exactly the sentence that would have justified
+        buying more steps.
+        """
         if not self.history:
             return "conditioning probe: never ran"
         lines = ["conditioning gain over training (probe subsample, not the gate):"]
         lines += [f"  step {step:>6}  {gain:+.3%}" for step, gain in self.history]
-        first, last = self.history[0][1], self.history[-1][1]
-        lines.append(
-            f"  {'rising' if last > first else 'flat or falling'} "
-            f"from {first:+.3%} to {last:+.3%}"
-        )
+        if len(self.history) < 4:
+            return "\n".join(lines)
+
+        gains = [gain for _, gain in self.history]
+        half = len(gains) // 2
+        early, late = gains[:half], gains[half:]
+        change = sum(late) / len(late) - sum(early) / len(early)
+        # Jitter, not total range. Range is the wrong noise estimate: on a
+        # smoothly rising curve the range *is* the rise, so comparing the two
+        # calls every real trend flat. The mean absolute step-to-step change
+        # is large on a noisy plateau and small on a smooth trend, which is
+        # the distinction being drawn.
+        jitter = sum(
+            abs(b - a) for a, b in zip(gains, gains[1:], strict=False)
+        ) / max(len(gains) - 1, 1)
+        if abs(change) < jitter:
+            lines.append(
+                f"  FLAT: halves differ by {change:+.3%}, within the "
+                f"{jitter:.3%} step-to-step jitter."
+            )
+            lines.append(
+                "  More steps are not the missing ingredient -- whatever the "
+                "control\n  token can contribute, it contributed early."
+            )
+        else:
+            lines.append(
+                f"  {'RISING' if change > 0 else 'FALLING'}: halves differ by "
+                f"{change:+.3%}, against {jitter:.3%} step-to-step jitter."
+            )
         return "\n".join(lines)
 
 

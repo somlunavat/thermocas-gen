@@ -1,0 +1,7 @@
+perplexity with the correct growth-temperature token: 3.4373
+perplexity with shuffled tokens: 3.4464 (mean of 5)
+  individual shuffles: 3.4464, 3.4465, 3.4464, 3.4463, 3.4466
+relative gain: +0.26% (required +2.00%)
+beats every shuffle: True
+GATE 2 FAILED
+The model is not using its growth-temperature token. Generating from it would produce sequences whose target temperature had no influence. Debug the conditioning before generating anything: check that the control token is not masked out of the loss, that label dropout is below 1.0, and that the training bins are not degenerate.
