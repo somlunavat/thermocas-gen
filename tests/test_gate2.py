@@ -28,6 +28,7 @@ def params(**overrides) -> Gate2Params:
         fail_on_violation=True,
         min_z=3.0,
         ceiling_gain=0.00172,
+        ceiling_corpus="pretrain",
         min_ceiling_fraction=0.5,
     )
     base.update(overrides)
@@ -504,3 +505,36 @@ class TestConditioningProbe:
     def test_the_report_says_so_when_it_never_ran(self):
         probe, _ = self.build([])
         assert "never ran" in probe.report()
+
+
+class TestTheCeilingBelongsToACorpus:
+    """A ceiling measured on stage A says nothing about the Cas9 corpus, where
+    orthologs across temperature classes are a far tighter comparison than
+    whole proteomes. Nothing in the gate's arithmetic would notice the
+    substitution: it would produce a confident ceiling-fraction and a verdict
+    about nothing. So the pairing is checked, not assumed."""
+
+    def test_a_ceiling_without_a_corpus_is_refused(self):
+        with pytest.raises(ValueError, match="ceiling_corpus"):
+            params(ceiling_corpus=None)
+
+    def test_no_ceiling_needs_no_corpus(self):
+        """Running with effect size unjudged stays legal."""
+        p = params(ceiling_gain=None, ceiling_corpus=None)
+        assert p.ceiling_gain is None
+
+    def test_the_matching_corpus_passes_the_check(self):
+        params(ceiling_corpus="pretrain").check_corpus("pretrain")
+
+    def test_a_different_corpus_is_refused_by_name(self):
+        with pytest.raises(ValueError, match="'pretrain'.*'data'"):
+            params(ceiling_corpus="pretrain").check_corpus("data")
+
+    def test_the_refusal_says_how_to_fix_it(self):
+        with pytest.raises(ValueError, match="13_conditioning_ceiling.py"):
+            params(ceiling_corpus="pretrain").check_corpus("data")
+
+    def test_an_unjudged_gate_is_not_blocked_by_the_check(self):
+        """With no ceiling there is nothing to be stale, so stage B can still
+        run and report the raw gain."""
+        params(ceiling_gain=None, ceiling_corpus=None).check_corpus("data")

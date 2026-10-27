@@ -119,7 +119,21 @@ def main() -> int:
     args = parser.parse_args()
 
     cfg = Config.load(args.config)
-    rows = load_rows(cfg.resolve_path("paths/label_table"))
+    label_table = cfg.resolve_path("paths/label_table")
+    if not label_table.exists():
+        # The Cas9 corpus does not exist until the search and labelling
+        # pipeline has been run, and a traceback here reads like a bug in the
+        # arithmetic rather than a step that has not happened yet.
+        print(
+            f"no label table at {label_table}\n"
+            f"The '{args.config}' corpus has not been built yet, so there is "
+            "nothing to measure an\ninformation ceiling over. Build it first "
+            "(02_search.py, then the labelling and\nscreening steps in "
+            "README.md), or pass --config pretrain for the stage A corpus.",
+            file=sys.stderr,
+        )
+        return 2
+    rows = load_rows(label_table)
     sequences = cfg.resolve_path(
         "paths/screened_sequences"
         if "paths/screened_sequences" in cfg
@@ -190,11 +204,24 @@ def main() -> int:
         else None
     )
     ceiling = gain_from_information(weighted)
+    configured_corpus = (
+        str(section["ceiling_corpus"])
+        if "ceiling_corpus" in section and section["ceiling_corpus"]
+        else None
+    )
     print(f"  within-cluster ceiling      {ceiling:+.3%}")
     print(f"  put this in configs/train.yaml as conditioning_gate/ceiling_gain:"
           f"  {weighted:.5f}")
+    print(f"  ...and conditioning_gate/ceiling_corpus: {args.config}")
     if configured is None:
         print("\n  no ceiling_gain is set, so Gate 2 cannot judge effect size.")
+    elif configured_corpus != args.config:
+        # Not a staleness problem: the configured number is about a different
+        # corpus, so comparing the two values would be meaningless either way.
+        print(f"\n  the configured ceiling belongs to the "
+              f"'{configured_corpus}' corpus, not '{args.config}', so there "
+              "is nothing\n  to compare. Gate 2 refuses a cross-corpus "
+              "ceiling; see Gate2Params.check_corpus.")
     elif abs(configured - ceiling) / max(ceiling, 1e-12) > 0.10:
         print(f"\n  CONFIG IS STALE: conditioning_gate/ceiling_gain is "
               f"{configured:+.3%}, more than\n  10% away from the {ceiling:+.3%} "

@@ -1504,3 +1504,35 @@ verification.
 | Date | Machine | Hours | Purpose |
 | --- | --- | --- | --- |
 | | | | |
+
+## 2026-10-27 -- The Cas9 ceiling cannot be measured yet, so the gate refuses to guess
+
+Next after the Gate 2 rewrite was to compute the ceiling for the Cas9 corpus,
+since stage B inherits the gate and the answer should be a different number:
+orthologs across temperature classes are a far tighter comparison than whole
+proteomes, so the token should be worth more there, not less.
+
+It cannot be computed. `data/processed/label_table.csv` and
+`cas9_labeled.fasta` do not exist -- the search and labelling pipeline has
+never been run, deliberately, pending a stage A result. So the measurement is
+blocked on building the corpus, not on anything about the arithmetic.
+
+What was worth fixing is the failure mode that blockage creates.
+`configs/train.yaml` carries `ceiling_gain: 0.00172`, measured on the stage A
+corpus. Nothing in the gate knew that. Starting stage B with this config would
+have judged Cas9 effect size against a stage A ceiling, and the arithmetic
+would have produced a confident ceiling-fraction and a pass or fail that meant
+nothing -- a one-line config mistake invisible in the gate's own output, which
+is exactly the shape of the error this project has now made twice.
+
+So the ceiling now carries its corpus. `ceiling_corpus: pretrain` sits beside
+it, `Gate2Params` refuses to be constructed with a ceiling and no corpus, and
+`11_train.py` calls `check_corpus` before the GPU is touched and exits 3 on a
+mismatch. Stage B will stop at startup with a message naming the command that
+produces the number it needs. Clearing `ceiling_gain` remains a legal way to
+run with effect size unjudged, which is honest; running against the wrong
+ceiling is not.
+
+`13_conditioning_ceiling.py` also now exits 2 with a readable message when the
+corpus it was pointed at has not been built, instead of a `FileNotFoundError`
+traceback that reads like a bug in the information calculation.

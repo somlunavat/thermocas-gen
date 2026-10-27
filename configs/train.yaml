@@ -133,6 +133,12 @@ conditioning_gate:
   #    where orthologs across temperature classes are a far tighter comparison
   #    than whole proteomes.
   ceiling_gain: 0.00172
+  # Which corpus that number came from. 11_train.py refuses to start if it
+  # disagrees with the stage being trained, because a ceiling measured on one
+  # corpus gives a confident and meaningless answer about another, and nothing
+  # downstream would notice. The Cas9 ceiling is not yet measured -- the
+  # corpus does not exist yet -- so stage B will stop here until it is.
+  ceiling_corpus: pretrain
   # A language model has context and can exceed a unigram ceiling, so values
   # above 1.0 are legitimate; 0.5 asks for half the first-order signal.
   min_ceiling_fraction: 0.5

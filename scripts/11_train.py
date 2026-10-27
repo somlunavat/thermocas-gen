@@ -399,6 +399,13 @@ def main() -> int:
         return 3
 
     gate2 = Gate2Params.from_config(data_cfg)
+    # The ceiling belongs to a corpus, and this is the last point before the
+    # GPU at which a mismatch is cheap to find.
+    try:
+        gate2.check_corpus("pretrain" if args.stage == "a" else "data")
+    except ValueError as exc:
+        print(f"\n{exc}", file=sys.stderr)
+        return 3
     ceiling = (
         f"ceiling {gate2.ceiling_gain:+.3%}, need "
         f"{gate2.min_ceiling_fraction:.2f}x of it"

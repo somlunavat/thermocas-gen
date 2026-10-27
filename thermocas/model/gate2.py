@@ -82,6 +82,11 @@ class Gate2Params:
     min_z: float = 3.0
     ceiling_gain: float | None = None
     min_ceiling_fraction: float = 0.5
+    # Which corpus ceiling_gain was measured on, as a config name ("pretrain"
+    # for stage A, "data" for the Cas9 stage). A ceiling is a property of one
+    # corpus, so carrying it unlabelled is how stage B would silently come to
+    # be judged against stage A's number. See check_corpus.
+    ceiling_corpus: str | None = None
 
     def __post_init__(self) -> None:
         if self.n_shuffles < 2:
@@ -110,6 +115,35 @@ class Gate2Params:
                 "because a language model has context and can exceed the unigram "
                 "ceiling, but above 2.0 is almost certainly a units mistake."
             )
+        if self.ceiling_gain is not None and not self.ceiling_corpus:
+            raise ValueError(
+                "ceiling_gain is set but ceiling_corpus is not. The ceiling is "
+                "a property of one corpus and is meaningless against another, "
+                "so it has to say which one it came from. Set "
+                "conditioning_gate/ceiling_corpus to the config name the "
+                "ceiling was measured on ('pretrain' or 'data')."
+            )
+
+    def check_corpus(self, corpus: str) -> None:
+        """Refuse a ceiling measured on a different corpus than this run's.
+
+        Nothing in the arithmetic notices this: a stale ceiling produces a
+        confident ceiling-fraction, and a pass or fail that means nothing. The
+        mistake is one line in a config and would survive any amount of
+        staring at the gate's output, so it is checked before the GPU is
+        touched rather than discovered after eighteen hours.
+        """
+        if self.ceiling_gain is None or self.ceiling_corpus == corpus:
+            return
+        raise ValueError(
+            f"conditioning_gate/ceiling_gain ({self.ceiling_gain:+.3%}) was "
+            f"measured on the '{self.ceiling_corpus}' corpus, but this run "
+            f"trains on '{corpus}'. Effect size would be judged against the "
+            "wrong ceiling. Measure this corpus's ceiling with\n"
+            f"    python scripts/13_conditioning_ceiling.py --config {corpus}\n"
+            "then set ceiling_gain and ceiling_corpus to match. To run with "
+            "effect size unjudged instead, clear ceiling_gain."
+        )
 
     @classmethod
     def from_config(cls, cfg, path: str = "conditioning_gate") -> Gate2Params:
@@ -123,6 +157,11 @@ class Gate2Params:
             fail_on_violation=bool(section["fail_on_violation"]),
             min_z=float(section["min_z"]) if "min_z" in section else 3.0,
             ceiling_gain=ceiling,
+            ceiling_corpus=(
+                str(section["ceiling_corpus"])
+                if "ceiling_corpus" in section and section["ceiling_corpus"]
+                else None
+            ),
             min_ceiling_fraction=(
                 float(section["min_ceiling_fraction"])
                 if "min_ceiling_fraction" in section
