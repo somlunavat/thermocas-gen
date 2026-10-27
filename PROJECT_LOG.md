@@ -1536,3 +1536,69 @@ ceiling is not.
 `13_conditioning_ceiling.py` also now exits 2 with a readable message when the
 corpus it was pointed at has not been built, instead of a `FileNotFoundError`
 traceback that reads like a bug in the information calculation.
+
+### 2026-10-27 — The Cas9 corpus is built, and it cannot carry stage B as designed
+
+Built the corpus end to end for the first time. Three things were learned, and
+only the first was expected.
+
+**The corpus.** `14_collect_cas9.py` (new) collects candidates from UniProtKB
+by Cas9-specific Pfam cross-reference OR Cas9 name, length-bounded at the
+config's 950–1,700 aa: 1,490 candidates, 1,444 confirmed by HMMER as carrying
+both nuclease domains, 1,019 joined to a Gosha OGT label, 208 clusters at 45%
+identity / 80% coverage. Full numbers in
+`results/cas9_corpus_20261027/corpus_summary.txt`.
+
+`02_search.py` was not used. The census had already established that the
+thermophilic Cas9 shortage is biological, not database coverage, so a
+multi-gigabyte UniRef50 download and a cloud DIAMOND search was the expensive
+way to confirm a known answer. Annotation-based collection is the cheap path
+and it reproduced the census exactly: **23 thermophilic sequences**, the same
+number the census estimated, so Gate 1 fails on thermo by a factor of nine.
+
+**The Pfam query was less sensitive than the name match, not more.** The
+reasoning for querying by domain family was that an ortholog annotated "type
+II CRISPR RNA-guided endonuclease" is invisible to `protein_name:cas9`. That
+is true and it bought 11 sequences. Measured: families alone 601, name alone
+1,479, union 1,490. Only 601 of 1,490 Cas9 entries carry any Cas9-specific
+Pfam cross-reference, because UniProt's precomputed InterPro annotation is
+itself incomplete. Running `hmmsearch` directly confirmed 1,444 — the profiles
+find what the cross-references do not, which is an argument for the pipeline's
+own domain step and against trusting annotation as a search index.
+
+**Two new failures, both structural rather than numerical.**
+
+*The test split holds no thermophilic sequence.* 59 sequences, 20 clusters,
+all mesophilic. Gate 2 on that split is not a hard test, it is an impossible
+one: shuffling the growth-temperature token across a single-class split is a
+no-op, so the measured gain is ~0 by construction no matter what the model
+learned. Gate 1's count was the symptom; this is what it costs. The 23
+thermophilic sequences land 20/3/0 across train/val/test, so even validation
+rests on three.
+
+*Cluster-disjoint splitting did not prevent leakage.* `06_leakage_test.py`
+found 222 pairs over 21 held-out sequences above 45% identity and 80%
+coverage, the highest at 88.7% identity over 99.8% coverage. This is not a bug
+in the splitter: MMseqs2 greedy set-cover clustering guarantees that cluster
+*representatives* are dissimilar, not that members of different clusters are.
+The leakage gate exists precisely to catch what clustering does not promise,
+and it earned its place on first use.
+
+**The ceiling, which was the question.** Corpus-wide +0.008%; within-cluster
++0.119%, from 3 clusters and 57,385 residues. Against stage A's +0.172% from
+1,552 clusters and 51.9M residues.
+
+The prediction was wrong. The expectation was a *higher* ceiling, on the
+argument that thermophilic and mesophilic orthologs of one protein are a
+tighter comparison than pooled proteomes. The argument was fine; it just
+needs both classes present in the same family, and this corpus has three such
+families. The corpus-wide number collapses to a twentieth of stage A's for the
+plainer reason that 2.1% of its residues are thermophilic, so the bin label is
+nearly constant and a nearly constant variable carries almost no information.
+
+The within-cluster figure is recorded and deliberately not configured. Three
+clusters is not a sample, and mutual information at small residue counts is
+upward-biased, so +0.119% is both fragile and probably optimistic. Writing it
+into `conditioning_gate/ceiling_gain` would give stage B a confident threshold
+resting on three protein families — the same mistake as the 2% figure, with a
+measurement attached to make it look earned.

@@ -1,0 +1,19 @@
+sequences: 1,019 from cas9_labeled.fasta
+bins:      meso=1,260,364 residues, thermo=26,705 residues
+
+=== corpus-wide ceiling (overstates it; see the docstring) ===
+  I(residue; bin)            0.000079 nats over 1,287,069 residues
+  best possible ppl gain     +0.008%
+
+=== within-cluster ceiling (the token's value given the family) ===
+  clusters used               3 (both classes, >=2,000 residues each)
+  I(residue; bin | family)    0.001194 nats over 57,385 residues
+  best possible ppl gain      +0.119%
+
+=== against the gate ===
+  within-cluster ceiling      +0.119%
+  put this in configs/train.yaml as conditioning_gate/ceiling_gain:  0.00119
+  ...and conditioning_gate/ceiling_corpus: data
+
+  the configured ceiling belongs to the 'pretrain' corpus, not 'data', so there is nothing
+  to compare. Gate 2 refuses a cross-corpus ceiling; see Gate2Params.check_corpus.

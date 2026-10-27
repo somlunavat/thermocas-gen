@@ -1,0 +1,43 @@
+Cas9 corpus, built 2026-10-27
+=============================
+
+Collection       UniProtKB REST, 6 Cas9-specific Pfam families OR protein_name:cas9,
+                 length 950-1700 aa                               1,490 candidates
+Length/residue   1,483 kept (6 duplicates, 1 nonstandard residue)
+Domains (HMMER)  1,444 carry RuvC + HNH at i-Evalue <= 1e-3
+OGT join (Gosha) 1,019 labeled (70.6%); 779 cross-checked by >=2 collections
+Clustering       208 clusters at 45% identity / 80% coverage
+
+Bins
+  meso     996 sequences (verified 763)   1,260,364 residues
+  thermo    23 sequences (verified  16)      26,705 residues   2.1% of residues
+
+Split (cluster-level, 80/10/10, seed 20261019)
+  train    830 sequences   168 clusters   meso=810  thermo=20
+  val      130 sequences    20 clusters   meso=127  thermo=3
+  test      59 sequences    20 clusters   meso=59   thermo=0
+
+Gates
+  Gate 1   FAIL   thermo 23 < min_per_bin 200
+  Gate 2   not evaluable on test: the test split holds no thermophilic
+           sequence, so shuffling the growth-temperature token across it is a
+           no-op and the measured gain would be ~0 by construction, whatever
+           the model had learned.
+  Leakage  FAIL   222 pairs over 21 held-out sequences above 45% identity /
+           80% coverage, despite cluster-disjoint splitting. MMseqs2 greedy
+           set-cover guarantees dissimilar cluster *representatives*, not
+           dissimilar members across clusters.
+
+Conditioning ceiling (scripts/13_conditioning_ceiling.py --config data)
+  corpus-wide        I = 0.000079 nats   best possible gain +0.008%
+  within-cluster     I = 0.001194 nats   best possible gain +0.119%
+                     from 3 clusters and 57,385 residues
+
+  For comparison, stage A: corpus-wide +0.154%, within-cluster +0.172%,
+  the latter from 1,552 clusters and 51.9M residues.
+
+  The within-cluster number is not trustworthy. Three clusters is not a
+  sample, and mutual information at small residue counts is upward-biased, so
+  +0.119% is both fragile and probably optimistic. It is recorded, not
+  configured: conditioning_gate/ceiling_gain stays on the stage A corpus and
+  Gate2Params.check_corpus refuses to judge stage B against it.

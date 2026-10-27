@@ -34,7 +34,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from thermocas.config import Config, GrowthTemperatureBinner  # noqa: E402
-from thermocas.data.fasta import read_fasta  # noqa: E402
+from thermocas.data.fasta import read_fasta, write_fasta  # noqa: E402
 from thermocas.data.ogt import (  # noqa: E402
     JoinReport,
     OgtTable,
@@ -109,6 +109,10 @@ def main() -> int:
     parser.add_argument("--sequences", type=Path, default=None, help="FASTA to label")
     parser.add_argument("--ogt-csv", type=Path, default=None, help="Gosha all-species CSV")
     parser.add_argument("--out", type=Path, default=None, help="label table CSV")
+    parser.add_argument(
+        "--out-fasta", type=Path, default=None,
+        help="labeled sequences; defaults to paths/labeled_fasta",
+    )
     parser.add_argument("--fetch", action="store_true", help="download the Gosha CSVs first")
     parser.add_argument(
         "--strict-crosscheck",
@@ -159,7 +163,10 @@ def main() -> int:
 
     print(f"OGT database: {ogt_csv}")
     print(table.report.summary())
-    print(f"\ncross-check: >={min_sources} collections agreeing on the bin at >={min_agreement:.0%}")
+    print(
+        f"\ncross-check: >={min_sources} collections agreeing on the bin "
+        f"at >={min_agreement:.0%}"
+    )
 
     records = list(read_fasta(args.sequences))
     report = JoinReport(total=len(records))
@@ -230,6 +237,28 @@ def main() -> int:
         writer.writeheader()
         writer.writerows(rows)
     print(f"\nwrote {len(rows)} labeled rows to {out_path}")
+
+    # The labeled FASTA, which 05_cluster_split.py and 06_leakage_test.py both
+    # document as their input and which nothing used to produce. The label
+    # table is a strict subset of the input sequences -- an unlabeled sequence
+    # has no bin and so cannot be trained on or split -- and this is the step
+    # that knows which subset, so it writes it rather than leaving every
+    # caller to re-derive the join from the CSV.
+    labeled_ids = {row["seq_id"] for row in rows}
+    fasta_path = args.out_fasta or cfg.resolve_path("paths/labeled_fasta")
+    kept = [r for r in read_fasta(args.sequences) if r.seq_id in labeled_ids]
+    if len(kept) != len(labeled_ids):
+        # Can only happen if the ids in the table are not the ids in the
+        # FASTA, which would make every downstream join silently empty.
+        print(
+            f"wrote no FASTA: {len(kept)} of {len(labeled_ids)} labeled ids "
+            "found in the input sequences. The label table and the FASTA "
+            "disagree about identifiers; see canonical_seq_id.",
+            file=sys.stderr,
+        )
+        return 4
+    write_fasta(fasta_path, kept)
+    print(f"wrote {len(kept)} labeled sequences to {fasta_path}")
 
     min_per_bin = int(cfg["growth_temperature/min_per_bin"])
     use_verified = args.strict_crosscheck or bool(cfg["growth_temperature/require_crosscheck"])
