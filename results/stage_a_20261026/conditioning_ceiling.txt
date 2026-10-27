@@ -1,0 +1,22 @@
+sequences: 311,987 from broad_proteins_screened.fasta
+bins:      meso=68,334,786 residues, thermo=45,452,220 residues
+
+=== corpus-wide ceiling (overstates it; see the docstring) ===
+  I(residue; bin)            0.001546 nats over 113,787,006 residues
+  best possible ppl gain     +0.154%
+
+=== within-cluster ceiling (the token's value given the family) ===
+  clusters used               1,552 (both classes, >=2,000 residues each)
+  I(residue; bin | family)    0.001720 nats over 51,853,524 residues
+  best possible ppl gain      +0.172%
+
+=== against the gate ===
+  Gate 2 requires             +2.00%
+  within-cluster ceiling      +0.172%
+
+  THE GATE IS ABOVE THE CEILING, by 12x.
+  No model can pass it on this corpus from residue composition.
+  A measured gain near the ceiling means the conditioning worked
+  and the threshold was set wrong -- those are opposite readings
+  of the same number, so the threshold has to be justified before
+  a failed gate can be interpreted at all.

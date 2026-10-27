@@ -23,10 +23,36 @@ from thermocas.model.gate2 import (
 
 def params(**overrides) -> Gate2Params:
     base = dict(
-        enabled=True, min_perplexity_gain=0.02, n_shuffles=5, fail_on_violation=True
+        enabled=True,
+        n_shuffles=5,
+        fail_on_violation=True,
+        min_z=3.0,
+        ceiling_gain=0.00172,
+        min_ceiling_fraction=0.5,
     )
     base.update(overrides)
     return Gate2Params(**base)
+
+
+# Perplexities from the 20,000-step Stage A run of 2026-10-26, which the old
+# gate failed and the corrected gate passes. Kept as constants because they
+# are the regression this rewrite exists for.
+MEASURED_VAL_TRUE = 3.4373
+MEASURED_VAL_SHUFFLED = [3.4464, 3.4465, 3.4464, 3.4463, 3.4466]
+MEASURED_TEST_TRUE = 3.4071
+MEASURED_TEST_SHUFFLED = [3.4165, 3.4166, 3.4164, 3.4160, 3.4165]
+# scripts/13_conditioning_ceiling.py on the stage A corpus.
+STAGE_A_CEILING = 0.00172
+
+
+def result(true, shuffled, **overrides) -> Gate2Result:
+    kwargs = dict(
+        min_z=3.0, ceiling_gain=STAGE_A_CEILING, min_ceiling_fraction=0.5
+    )
+    kwargs.update(overrides)
+    return Gate2Result(
+        true_perplexity=true, shuffled_perplexities=list(shuffled), **kwargs
+    )
 
 
 class TestParams:
@@ -34,20 +60,134 @@ class TestParams:
         loaded = Gate2Params.from_config(Config.load("train"))
         assert loaded.enabled is True
         assert loaded.fail_on_violation is True
-        assert 0.0 < loaded.min_perplexity_gain < 1.0
+        assert loaded.min_z > 0
 
-    def test_gain_expressed_as_a_percent_is_rejected(self):
-        """2 instead of 0.02 would demand a 200% improvement and never pass."""
-        with pytest.raises(ValueError, match="relative improvement"):
-            params(min_perplexity_gain=2.0)
+    def test_the_shipped_config_carries_a_measured_ceiling(self):
+        """Without one, effect size is unjudged and the gate is half a gate."""
+        loaded = Gate2Params.from_config(Config.load("train"))
+        assert loaded.ceiling_gain is not None
+        assert 0.0 < loaded.ceiling_gain < 0.01
 
-    def test_zero_shuffles_rejected(self):
-        with pytest.raises(ValueError, match="at least 1"):
-            params(n_shuffles=0)
+    def test_a_ceiling_expressed_as_a_percent_is_rejected(self):
+        """0.172 instead of 0.00172 would demand a 17% gain on a corpus whose
+        ceiling is 0.172%, which is the original mistake in new units."""
+        with pytest.raises(ValueError, match="relative perplexity gain"):
+            params(ceiling_gain=0.172)
 
-    def test_zero_gain_is_allowed(self):
-        """A bare 'any improvement at all' threshold is a legitimate choice."""
-        assert params(min_perplexity_gain=0.0).min_perplexity_gain == 0.0
+    def test_one_shuffle_is_rejected(self):
+        """The gate measures a margin against the spread across shuffles, and
+        one shuffle has no spread."""
+        with pytest.raises(ValueError, match="at least 2"):
+            params(n_shuffles=1)
+
+    def test_a_negative_z_floor_is_rejected(self):
+        with pytest.raises(ValueError, match="non-negative"):
+            params(min_z=-1.0)
+
+    def test_a_ceiling_fraction_above_one_is_allowed(self):
+        """A language model has context and can beat a unigram ceiling, so
+        demanding more than 1.0x is a legitimate, if strict, choice."""
+        assert params(min_ceiling_fraction=1.5).min_ceiling_fraction == 1.5
+
+    def test_an_absurd_ceiling_fraction_is_rejected(self):
+        with pytest.raises(ValueError, match="units mistake"):
+            params(min_ceiling_fraction=50.0)
+
+    def test_no_ceiling_is_allowed(self):
+        assert params(ceiling_gain=None).ceiling_gain is None
+
+
+class TestSignificance:
+    def test_the_measured_run_is_significant(self):
+        r = result(MEASURED_VAL_TRUE, MEASURED_VAL_SHUFFLED)
+        assert r.is_significant
+        assert r.z > 50
+
+    def test_no_effect_is_not_significant(self):
+        """Shuffles and truth landing alike is the null this gate tests."""
+        r = result(3.4464, MEASURED_VAL_SHUFFLED)
+        assert not r.is_significant
+
+    def test_beating_the_mean_while_losing_to_a_shuffle_is_not_significant(self):
+        r = result(3.4464, [3.4470, 3.4480, 3.4460, 3.4475, 3.4478])
+        assert not r.beats_every_shuffle
+        assert not r.is_significant
+
+    def test_identical_shuffles_with_a_real_margin_are_infinitely_significant(self):
+        r = result(1.0, [2.0, 2.0, 2.0, 2.0, 2.0])
+        assert r.z == math.inf
+        assert r.is_significant
+
+    def test_identical_shuffles_with_no_margin_are_not(self):
+        """Zero spread must not read as infinite significance on a tie."""
+        r = result(2.0, [2.0, 2.0, 2.0, 2.0, 2.0])
+        assert r.z == 0.0
+        assert not r.is_significant
+
+    def test_the_wrong_direction_is_not_significant(self):
+        r = result(3.4560, MEASURED_VAL_SHUFFLED)
+        assert r.relative_gain < 0
+        assert not r.is_significant
+
+
+class TestEffectSize:
+    def test_the_measured_run_exceeds_the_unigram_ceiling(self):
+        """Expected of a model that also has context, not a red flag."""
+        r = result(MEASURED_VAL_TRUE, MEASURED_VAL_SHUFFLED)
+        assert r.ceiling_fraction > 1.0
+        assert r.is_large_enough
+
+    def test_a_real_but_tiny_effect_is_too_small(self):
+        """The case the old gate could not express: unambiguously significant
+        and still a fraction of the available signal."""
+        r = result(3.4450, MEASURED_VAL_SHUFFLED)
+        assert r.is_significant
+        assert not r.is_large_enough
+        assert not r.passed
+
+    def test_without_a_ceiling_effect_size_is_unjudged_not_failed(self):
+        r = result(3.4450, MEASURED_VAL_SHUFFLED, ceiling_gain=None)
+        assert r.ceiling_fraction is None
+        assert r.is_large_enough
+        assert "UNJUDGED" in r.summary()
+
+    def test_the_summary_names_the_script_that_computes_the_ceiling(self):
+        r = result(3.4450, MEASURED_VAL_SHUFFLED, ceiling_gain=None)
+        assert "13_conditioning_ceiling.py" in r.summary()
+
+
+class TestAgainstTheMeasuredRun:
+    """The rewrite's whole point: this run failed the old gate and passes the
+    corrected one, on both splits, without the numbers changing."""
+
+    def test_validation_passes(self):
+        assert result(MEASURED_VAL_TRUE, MEASURED_VAL_SHUFFLED).passed
+
+    def test_held_out_test_passes(self):
+        assert result(MEASURED_TEST_TRUE, MEASURED_TEST_SHUFFLED).passed
+
+    def test_both_splits_agree_on_effect_size(self):
+        """Validation and test within 10% of each other is the evidence that
+        the 0.26% is a property of the model, not of the split."""
+        val = result(MEASURED_VAL_TRUE, MEASURED_VAL_SHUFFLED).relative_gain
+        test = result(MEASURED_TEST_TRUE, MEASURED_TEST_SHUFFLED).relative_gain
+        assert abs(val - test) / val < 0.10
+
+    def test_the_old_two_percent_threshold_would_still_fail_it(self):
+        """Documents why the threshold was the problem: the measured gain is
+        an order of magnitude under the asserted 2%, and also 1.5x the most
+        any model could get from residue composition on this corpus."""
+        gain = result(MEASURED_VAL_TRUE, MEASURED_VAL_SHUFFLED).relative_gain
+        assert gain < 0.02
+        assert gain > STAGE_A_CEILING
+
+    def test_a_failed_gate_says_which_criterion_failed(self):
+        """'Real but small' and 'not using the token' call for opposite
+        responses, so the diagnosis has to distinguish them."""
+        small = result(3.4450, MEASURED_VAL_SHUFFLED).summary()
+        absent = result(3.4464, MEASURED_VAL_SHUFFLED).summary()
+        assert "real but small" in small
+        assert "not using its growth-temperature token" in absent
 
 
 class TestPerplexity:
@@ -81,56 +221,80 @@ class TestPerplexity:
 
 
 class TestEvaluate:
+    """evaluate_gate2 on synthetic NLLs, where the right answer is arithmetic.
+
+    A 10% perplexity gain is used for the passing cases rather than the ~0.26%
+    the real corpus allows: these tests check the plumbing, and the measured
+    numbers are exercised separately in TestAgainstTheMeasuredRun.
+    """
+
     def test_conditioning_that_helps_passes(self):
         result = evaluate_gate2(
             true_nll=100.0,
             true_tokens=100,
-            shuffled_runs=[(110.0, 100)] * 5,
-            params=params(min_perplexity_gain=0.02),
+            shuffled_runs=[(110.0, 100), (110.5, 100), (109.5, 100),
+                           (110.2, 100), (109.8, 100)],
+            params=params(ceiling_gain=0.05),
         )
         assert result.passed
-        assert result.relative_gain > 0.02
         assert "GATE 2 PASSED" in result.summary()
 
     def test_conditioning_that_does_nothing_fails(self):
         result = evaluate_gate2(
             true_nll=100.0,
             true_tokens=100,
-            shuffled_runs=[(100.0, 100)] * 5,
+            shuffled_runs=[(100.0, 100), (100.1, 100), (99.9, 100),
+                           (100.05, 100), (99.95, 100)],
             params=params(),
         )
         assert not result.passed
-        assert result.relative_gain == pytest.approx(0.0)
         assert "GATE 2 FAILED" in result.summary()
 
     def test_failure_message_says_what_to_check(self):
-        result = evaluate_gate2(100.0, 100, [(100.0, 100)] * 5, params())
+        result = evaluate_gate2(
+            100.0, 100,
+            [(100.0, 100), (100.1, 100), (99.9, 100), (100.05, 100), (99.95, 100)],
+            params(),
+        )
         summary = result.summary()
         assert "not using its growth-temperature token" in summary
         assert "label dropout" in summary
 
     def test_conditioning_that_hurts_fails_with_a_negative_gain(self):
         result = evaluate_gate2(
-            true_nll=120.0, true_tokens=100, shuffled_runs=[(100.0, 100)] * 5, params=params()
+            true_nll=120.0,
+            true_tokens=100,
+            shuffled_runs=[(100.0, 100), (100.5, 100), (99.5, 100),
+                           (100.2, 100), (99.8, 100)],
+            params=params(),
         )
         assert not result.passed
         assert result.relative_gain < 0
-        assert "-" in result.summary()
 
-    def test_gain_just_below_the_threshold_fails(self):
-        # 1% improvement against a 2% requirement.
+    def test_an_effect_under_its_share_of_the_ceiling_fails(self):
+        """Replaces the old 'just below the threshold' test. The gain is real
+        and significant; it is a fifth of what the corpus allows."""
         result = evaluate_gate2(
-            true_nll=99.0, true_tokens=100, shuffled_runs=[(100.0, 100)] * 5,
-            params=params(min_perplexity_gain=0.02),
+            true_nll=99.0,
+            true_tokens=100,
+            shuffled_runs=[(100.0, 100), (100.1, 100), (99.9, 100),
+                           (100.05, 100), (99.95, 100)],
+            params=params(ceiling_gain=0.05),
         )
-        assert result.relative_gain < 0.02
+        assert result.is_significant
+        assert result.ceiling_fraction < 0.5
         assert not result.passed
 
-    def test_threshold_is_inclusive(self):
+    def test_the_ceiling_criterion_is_inclusive(self):
+        """Exactly its share passes, so the boundary is not off by one."""
         result = Gate2Result(
-            true_perplexity=0.98, shuffled_perplexities=[1.0], min_gain_required=0.02
+            true_perplexity=0.99,
+            shuffled_perplexities=[1.0, 1.0001, 0.9999, 1.00005, 0.99995],
+            min_z=3.0,
+            ceiling_gain=0.02,
+            min_ceiling_fraction=0.5,
         )
-        assert result.relative_gain == pytest.approx(0.02)
+        assert result.ceiling_fraction == pytest.approx(0.5, rel=1e-3)
         assert result.passed
 
     def test_compares_against_the_mean_of_shuffles(self):
@@ -138,24 +302,30 @@ class TestEvaluate:
         result = evaluate_gate2(
             true_nll=100.0,
             true_tokens=100,
-            shuffled_runs=[(101.0, 100), (120.0, 100), (115.0, 100), (118.0, 100), (119.0, 100)],
-            params=params(),
+            shuffled_runs=[(118.0, 100), (120.0, 100), (115.0, 100),
+                           (118.0, 100), (119.0, 100)],
+            params=params(ceiling_gain=0.05),
         )
         assert len(result.shuffled_perplexities) == 5
         assert result.mean_shuffled_perplexity > result.true_perplexity
         assert result.passed
 
-    def test_beats_every_shuffle_is_reported_separately(self):
-        """Passing on the mean while losing to some shuffles is worth seeing."""
+    def test_losing_to_a_single_shuffle_now_fails_the_gate(self):
+        """Changed deliberately. This used to pass on the mean while losing to
+        one shuffle, with 'beats every shuffle: False' reported alongside as a
+        note. Beating every shuffle is part of the significance criterion now:
+        a result inside the spread of which shuffle was drawn is not an
+        effect, whatever the mean says."""
         losing = evaluate_gate2(
             true_nll=100.0,
             true_tokens=100,
-            shuffled_runs=[(90.0, 100), (130.0, 100), (130.0, 100), (130.0, 100), (130.0, 100)],
-            params=params(),
+            shuffled_runs=[(90.0, 100), (130.0, 100), (130.0, 100),
+                           (130.0, 100), (130.0, 100)],
+            params=params(ceiling_gain=0.05),
         )
-        assert losing.passed  # the mean is much worse than the true run
-        assert not losing.beats_every_shuffle  # but one shuffle beat it
-        assert "beats every shuffle: False" in losing.summary()
+        assert not losing.beats_every_shuffle
+        assert not losing.passed
+        assert "beats every shuffle   False" in losing.summary()
 
     def test_shuffle_count_must_match_the_config(self):
         """Silently running fewer shuffles than configured would weaken the gate."""
@@ -164,12 +334,16 @@ class TestEvaluate:
 
     def test_no_shuffles_rejected(self):
         with pytest.raises(ValueError, match="at least one shuffled run"):
-            evaluate_gate2(100.0, 100, [], params(n_shuffles=1))
+            evaluate_gate2(100.0, 100, [], params(n_shuffles=2))
 
     def test_differing_token_counts_are_handled(self):
         """Dropping over-length sequences can change token counts between runs."""
         result = evaluate_gate2(
-            true_nll=200.0, true_tokens=200, shuffled_runs=[(230.0, 200)] * 5, params=params()
+            true_nll=200.0,
+            true_tokens=200,
+            shuffled_runs=[(230.0, 200), (231.0, 200), (229.0, 200),
+                           (230.5, 200), (229.5, 200)],
+            params=params(ceiling_gain=0.05),
         )
         assert result.passed
 

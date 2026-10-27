@@ -1,0 +1,53 @@
+The 2026-10-26 Stage A run, re-judged by the corrected Gate 2.
+
+The perplexities are unchanged -- they are the measured numbers from
+that run. Only the criteria changed. gate2_validation.txt and
+gate2_test.txt in this directory are the original outputs, kept as the
+record of what the run actually printed, which was GATE 2 FAILED on an
+absolute 2% threshold sitting 12x above the corpus ceiling.
+
+criteria: z >= 3.0, gain >= 0.50x the +0.172% corpus ceiling
+
+======================================================================
+VALIDATION (5,000 of 15,055)
+======================================================================
+perplexity with the correct growth-temperature token: 3.4373
+perplexity with shuffled tokens: 3.4464 (mean of 5)
+  individual shuffles: 3.4464, 3.4465, 3.4464, 3.4463, 3.4466
+relative gain: +0.265%
+
+is the effect real?
+  beats every shuffle   True
+  z vs shuffle spread   80.2  (required 3.0; spread 0.000114)
+  -> SIGNIFICANT
+
+is the effect large, given what the corpus allows?
+  corpus ceiling        +0.172% (scripts/13_conditioning_ceiling.py)
+  gain / ceiling        1.54x  (required 0.50x)
+  above the unigram ceiling, which is expected of a model that also has
+  context and can use substitutions a residue histogram cannot see.
+  -> LARGE ENOUGH
+
+GATE 2 PASSED
+
+======================================================================
+HELD-OUT TEST (5,000 of 16,952, cluster-disjoint)
+======================================================================
+perplexity with the correct growth-temperature token: 3.4071
+perplexity with shuffled tokens: 3.4164 (mean of 5)
+  individual shuffles: 3.4165, 3.4166, 3.4164, 3.4160, 3.4165
+relative gain: +0.272%
+
+is the effect real?
+  beats every shuffle   True
+  z vs shuffle spread   39.7  (required 3.0; spread 0.000235)
+  -> SIGNIFICANT
+
+is the effect large, given what the corpus allows?
+  corpus ceiling        +0.172% (scripts/13_conditioning_ceiling.py)
+  gain / ceiling        1.58x  (required 0.50x)
+  above the unigram ceiling, which is expected of a model that also has
+  context and can use substitutions a residue histogram cannot see.
+  -> LARGE ENOUGH
+
+GATE 2 PASSED

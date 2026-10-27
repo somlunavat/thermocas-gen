@@ -399,8 +399,14 @@ def main() -> int:
         return 3
 
     gate2 = Gate2Params.from_config(data_cfg)
-    print(f"\nGate 2: enabled={gate2.enabled}, "
-          f"required gain {gate2.min_perplexity_gain:.1%} over {gate2.n_shuffles} shuffles")
+    ceiling = (
+        f"ceiling {gate2.ceiling_gain:+.3%}, need "
+        f"{gate2.min_ceiling_fraction:.2f}x of it"
+        if gate2.ceiling_gain
+        else "no corpus ceiling set, so effect size will be unjudged"
+    )
+    print(f"\nGate 2: enabled={gate2.enabled}, {gate2.n_shuffles} shuffles, "
+          f"z >= {gate2.min_z:.1f}; {ceiling}")
 
     if args.dry_run:
         print("\ndry run: datasets built, nothing trained")

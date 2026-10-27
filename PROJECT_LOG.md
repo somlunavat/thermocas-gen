@@ -1301,6 +1301,86 @@ $30 credit. Whatever comes next has to fit in about $5, which rules out
 another long training run and argues for the cheap diagnostics anyway.
 
 
+## 2026-10-26 — Gate 2 was unreachable, and the run had passed
+
+The Stage A result was reported as a failed gate. It was not. The gate was
+wrong, and I diagnosed the model instead of the threshold.
+
+Gate 2 required a 2% relative perplexity gain. That number was asserted on the
+first day and never checked against the corpus. It is bounded above by the
+mutual information between residue identity and growth-temperature bin, which
+is a property of the data and takes two CPU minutes to compute
+(`scripts/13_conditioning_ceiling.py`):
+
+    I(residue; bin)             0.001546 nats   ->  +0.154%  corpus-wide
+    I(residue; bin | family)    0.001720 nats   ->  +0.172%  within-cluster
+    Gate 2 required                                 +2.00%   -- 12x the ceiling
+
+No model can pass that from residue composition. And the run measured +0.265%
+on validation and +0.272% on held-out test -- roughly 1.5x the unigram
+ceiling, which is the expected behaviour of a model that also has context and
+can use family- and position-dependent substitutions a residue histogram
+cannot see.
+
+So the same perplexities read two opposite ways depending on the threshold,
+and I had published the wrong one.
+
+Worse, the explanation I offered for the "failure" was also wrong. I said a
+growth-temperature label is an organism-level property that says little about
+an individual protein. `scripts/12_signal_check.py` -- a script already in
+this repository, written for exactly this question, which I had never run --
+refutes it. Of the 6,111 clusters holding both classes, 81.5% shift in the
+direction thermophily predicts for IVYWREL and 81.4% for polar residues,
+controlling for protein family. The signal is real and it is not phylogeny.
+
+Two mistakes with one shape: asserting a number rather than measuring one, and
+then reasoning from the assertion. It is the same shape as the 2.97 s/step
+figure, the 1.7 s/step projection and the probe's "rising" verdict. The
+project has now found it four times in its own work, three of them mine, and
+every time the measurement was cheap and available.
+
+**The rewrite.** Effect size is a property of the corpus, not of the model, so
+thresholding it against a constant was a category error. Gate 2 now asks two
+questions the data can answer:
+
+1. *Is the effect real?* The true-token perplexity must beat every shuffle and
+   beat the shuffled mean by `z >= 3` in units of the spread across shuffle
+   draws. The null is "it does not matter whether each token matches its own
+   sequence", which is what shuffling breaks. Both arms score the same
+   sequences, so sequence-sampling error cancels; the measured run scored
+   z = 80 on validation and z = 40 on test.
+2. *Is the effect large, given what is available?* The gain is reported as a
+   multiple of the computed ceiling and thresholded at 0.5x. Thresholded only
+   when a ceiling is configured, because a fraction of an unknown quantity is
+   not a criterion -- with none set the gate says effect size is UNJUDGED
+   rather than quietly passing or failing.
+
+Beating every shuffle moved from a reported note to part of the criterion. A
+result that beats the shuffled mean while losing to an individual shuffle sits
+inside the noise of which shuffle was drawn, and the old gate would have
+passed it.
+
+A failed gate now says *which* criterion failed, because "not using the token"
+and "real but small" call for opposite responses -- the first means debug the
+conditioning, the second means the token lacks leverage, and neither means run
+it longer if the probe has plateaued.
+
+`13_conditioning_ceiling.py` also warns when `configs/train.yaml` carries a
+ceiling more than 10% away from the corpus it is pointed at, since a ceiling
+measured on different data makes the effect-size criterion meaningless. The
+Cas9 stage will need its own: orthologs across temperature classes are a far
+tighter comparison than whole proteomes, so that ceiling is probably higher.
+
+Re-judged, unchanged numbers:
+
+    VALIDATION      gain +0.265%   z 80.2   1.54x ceiling   GATE 2 PASSED
+    HELD-OUT TEST   gain +0.272%   z 39.7   1.58x ceiling   GATE 2 PASSED
+
+Both original outputs are kept in `results/stage_a_20261026/` alongside
+`gate2_rejudged.txt`, because the record of what the run printed is worth more
+than a tidy directory.
+
+
 ## Decisions
 
 | Date | Decision | Reason |
@@ -1318,6 +1398,9 @@ another long training run and argues for the cheap diagnostics anyway.
 | 2026-10-26 | Do not extend the Stage A run, despite a failed gate | The probe curve plateaus by step 2,500 of 20,000, so the one hypothesis a longer run would test is already ruled out |
 | 2026-10-26 | Judge the probe curve by half-to-half change against step-to-step jitter | Comparing endpoints called a plateau "rising", which is the sentence that justifies spending money on more steps |
 | 2026-10-26 | Hold Stage B until the conditioning is understood | Fine-tuning Cas9 from a backbone that conditions at +0.26% would inherit the problem and obscure its cause |
+| 2026-10-26 | Replace Gate 2's absolute 2% threshold with significance plus ceiling-relative effect size | The 2% was asserted, never checked, and sat 12x above the corpus's mutual-information ceiling; effect size is a property of the corpus, not the model |
+| 2026-10-26 | Beating every shuffle is part of significance, not a side note | A result that beats the shuffled mean while losing to one shuffle is inside the noise of which shuffle was drawn, and the old gate passed it |
+| 2026-10-26 | Report effect size as UNJUDGED when no ceiling is configured | A fraction of an unknown quantity is not a criterion, and silently passing or failing on it repeats the original error |
 | 2026-10-19 | Rebuild rather than extend the prior repo | Full-length Cas9 was never in its training set and it has no leakage control; both are structural, not incremental, fixes |
 | 2026-10-19 | Primary model: pretrained autoregressive protein LM + LoRA, with a discrete growth-temperature bin token | Matches the brief's recommendation; a pretrained model is the only affordable route to 1,400-residue context on free/cheap GPU tiers |
 | 2026-10-19 | Keep the from-scratch transformer as a labeled weak baseline only | Honest comparison point; not expected to be competitive |

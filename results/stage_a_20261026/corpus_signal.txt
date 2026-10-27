@@ -1,0 +1,22 @@
+=== corpus-wide composition (confounded with phylogeny) ===
+bin           seqs  mean len   IVYWREL   charged     polar
+meso       182,964     373.5  39.256%  23.539%  18.076%
+thermo     129,023     352.3  42.681%  25.495%  15.725%
+
+delta (thermo - meso):
+  IVYWREL   +3.425%   expected up    OK
+  charged   +1.957%   expected up    OK
+  polar     -2.352%   expected down  OK
+
+=== within-cluster paired shift (controls for protein family) ===
+clusters: 55,840 total, 6,111 with both classes (10.9%)
+
+group           mean    median   as expected
+IVYWREL      +1.743%   +1.700%        81.5%
+charged      +0.638%   +0.600%        65.9%
+polar        -1.657%   -1.587%        81.4%
+
+'as expected' is the fraction of families shifting in the direction
+thermophily predicts. 50% is chance; the signal is real above that.
+
+SIGNAL PRESENT: the conditioning token has something to explain

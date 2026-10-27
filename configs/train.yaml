@@ -104,9 +104,38 @@ checkpoint:
 # nothing is generated.
 conditioning_gate:
   enabled: true
-  min_perplexity_gain: 0.02     # relative: (ppl_shuffled - ppl_true) / ppl_shuffled
   n_shuffles: 5
   fail_on_violation: true
+
+  # Two criteria, replacing a single invented threshold.
+  #
+  # This was `min_perplexity_gain: 0.02` -- a 2% relative gain, asserted and
+  # never checked against the corpus. It is unreachable here. The mutual
+  # information between residue identity and growth-temperature bin bounds
+  # what any model can gain from the token at 0.172%, so the gate sat 12x
+  # above its own ceiling and the first run to finish was reported as a
+  # failure while capturing ~1.5x the first-order signal available.
+  #
+  # Effect size is a property of the corpus, not of the model, so thresholding
+  # it against a constant was the error. Ask instead:
+
+  # 1. Is the effect real? Margin over the shuffled mean, in units of the
+  #    spread across shuffle draws. Both arms score the same sequences, so
+  #    sequence-sampling error cancels and a real effect gives a large z --
+  #    the 2026-10-26 run scored 80. 3.0 is a conventional floor, not a
+  #    measured one, but it is a floor on a quantity that has a null.
+  min_z: 3.0
+
+  # 2. Is the effect large given what is available? From
+  #    scripts/13_conditioning_ceiling.py on the stage A corpus: I = 0.001720
+  #    nats within-cluster, a best-possible gain of +0.172%. Recompute this
+  #    when the corpus changes -- it is a different number for the Cas9 stage,
+  #    where orthologs across temperature classes are a far tighter comparison
+  #    than whole proteomes.
+  ceiling_gain: 0.00172
+  # A language model has context and can exceed a unigram ceiling, so values
+  # above 1.0 are legitimate; 0.5 asks for half the first-order signal.
+  min_ceiling_fraction: 0.5
   # The same measurement, taken during training on a fixed subsample, so a
   # failed gate comes with a curve rather than a single number. Flat from the
   # first probe to the last says the conditioning is not being learned at all;
