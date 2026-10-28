@@ -21,6 +21,8 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import collections
+import dataclasses
 import sys
 import time
 from pathlib import Path
@@ -35,7 +37,11 @@ import torch  # noqa: E402
 # nothing that was not already being paid.
 from lightning.pytorch.callbacks import Callback  # noqa: E402
 
-from thermocas.config import Config, GrowthTemperatureBinner  # noqa: E402
+from thermocas.config import (  # noqa: E402
+    Config,
+    GrowthTemperatureBin,
+    GrowthTemperatureBinner,
+)
 from thermocas.model.dataset import (  # noqa: E402
     ConditionedProteinDataset,
     collate,
@@ -93,11 +99,70 @@ def resolve_training_corpus(cfg) -> Path:
     return cfg.resolve_path("paths/sequences")
 
 
-def build_datasets(cfg, data_cfg, tokenizer, model_cfg, model_name, split_names=("train", "val")):
+def binner_from_edges(edges: tuple[float, ...]) -> GrowthTemperatureBinner:
+    """A binner from bare Celsius edges, for the ceiling sweep's variants.
+
+    Two classes keep the names `meso` and `thermo` so a threshold variant is
+    directly comparable with the configured run and with every number already
+    in PROJECT_LOG.md. More than two get positional names, because `thermo`
+    would mean something different in each variant and the control tokens are
+    keyed by name.
+    """
+    names = (
+        ["meso", "thermo"]
+        if len(edges) == 1
+        else [f"t{i}" for i in range(len(edges) + 1)]
+    )
+    bounds = [float("-inf"), *edges, float("inf")]
+    return GrowthTemperatureBinner(
+        [
+            GrowthTemperatureBin(name=name, min_c=bounds[i], max_c=bounds[i + 1])
+            for i, name in enumerate(names)
+        ]
+    )
+
+
+def rebin_labels(labels, binner) -> dict[str, int]:
+    """Recompute `temp_bin` from `ogt_c` in place, returning the new counts.
+
+    This is what makes a sweep variant a *relabeling*: the sequences, the
+    clusters and the splits are untouched, so every variant trains on
+    identical residues and only the meaning of the control token changes.
+    Rewriting the 27 MB label table per variant, or shipping five config
+    directories, would both have worked and both would have given five
+    corpora to keep in step instead of one.
+
+    A row whose OGT cannot be read is emptied rather than guessed, which the
+    dataset already counts as `dropped_no_label`.
+    """
+    counts: dict[str, int] = collections.Counter()
+    for row in labels:
+        try:
+            ogt = float(row.get("ogt_c", "nan"))
+        except (TypeError, ValueError):
+            ogt = float("nan")
+        if ogt != ogt:  # NaN
+            row["temp_bin"] = ""
+            counts["(unlabeled)"] += 1
+            continue
+        name = binner.bin_for(ogt)
+        row["temp_bin"] = name
+        counts[name] += 1
+    return dict(counts)
+
+
+def build_datasets(
+    cfg, data_cfg, tokenizer, model_cfg, model_name,
+    split_names=("train", "val"), binner=None,
+):
     corpus = resolve_training_corpus(cfg)
     print(f"corpus:    {corpus.name}")
     sequences = load_sequences(corpus)
     labels = load_label_table(cfg.resolve_path("paths/label_table"))
+    if binner is not None:
+        counts = rebin_labels(labels, binner)
+        shown = ", ".join(f"{k}={v:,}" for k, v in sorted(counts.items()))
+        print(f"rebinned:  {shown}")
     datasets = {}
     for split in split_names:
         datasets[split] = ConditionedProteinDataset(
@@ -323,6 +388,22 @@ def main() -> int:
         help="override conditioning_gate/probe_examples",
     )
     parser.add_argument(
+        "--bin-edges",
+        default=None,
+        help="comma-separated growth-temperature edges in C, overriding "
+             "configs/data.yaml. '55' is a two-class variant at 55 C; "
+             "'32,45,56' is four classes. For the ceiling sweep: the corpus, "
+             "clusters and splits are untouched, so only the label changes.",
+    )
+    parser.add_argument(
+        "--ceiling-gain",
+        type=float,
+        default=None,
+        help="override conditioning_gate/ceiling_gain for this run. Required "
+             "with --bin-edges, because each variant has its own ceiling and "
+             "the configured one belongs to the configured bins.",
+    )
+    parser.add_argument(
         "--gate2-limit",
         type=int,
         default=None,
@@ -334,7 +415,37 @@ def main() -> int:
     stage_cfg = Config.load("pretrain" if args.stage == "a" else "data")
     data_cfg = Config.load("train")
     model_cfg = Config.load("model")
-    binner = GrowthTemperatureBinner.from_config(Config.load("data"))
+    if args.bin_edges:
+        try:
+            edges = tuple(
+                sorted(float(e) for e in str(args.bin_edges).split(",") if e.strip())
+            )
+        except ValueError:
+            print(f"--bin-edges must be numbers in C, got {args.bin_edges!r}",
+                  file=sys.stderr)
+            return 2
+        if not edges or len(set(edges)) != len(edges):
+            print(f"--bin-edges needs distinct edges, got {args.bin_edges!r}",
+                  file=sys.stderr)
+            return 2
+        if args.ceiling_gain is None:
+            # Without this the run would be judged against the configured
+            # bins' ceiling, which is a different corpus in all but name --
+            # exactly what Gate2Params.check_corpus exists to stop, and it
+            # cannot see a bin override.
+            print(
+                "--bin-edges changes the label, so it changes the ceiling. "
+                "Pass --ceiling-gain\nfor these bins (compute it with "
+                "scripts/15_ceiling_sweep.py), or clear it to run with\n"
+                "effect size unjudged.",
+                file=sys.stderr,
+            )
+            return 2
+        binner = binner_from_edges(edges)
+        print(f"bins:      {', '.join(binner.names)} from edges "
+              f"{', '.join(f'{e:.0f}' for e in edges)} C (--bin-edges)")
+    else:
+        binner = GrowthTemperatureBinner.from_config(Config.load("data"))
     # The residue vocabulary comes from the checkpoint, not from this project.
     # Only the growth-temperature control tokens are ours, appended above the
     # checkpoint's rows. See PretrainedTokenizerAdapter for what went wrong
@@ -374,6 +485,7 @@ def main() -> int:
         datasets = build_datasets(
             stage_cfg, data_cfg, tokenizer, model_cfg, args.model,
             split_names=("train", "val", "test"),
+            binner=binner if args.bin_edges else None,
         )
     except (FileNotFoundError, ValueError) as exc:
         print(f"\ncould not build datasets: {exc}", file=sys.stderr)
@@ -399,10 +511,34 @@ def main() -> int:
         return 3
 
     gate2 = Gate2Params.from_config(data_cfg)
+    if args.ceiling_gain is not None:
+        # A sweep variant's ceiling, with the corpus name set to match so the
+        # check below passes for the bins actually being trained on. The name
+        # records the variant rather than the config file, so a run's own
+        # output says which ceiling judged it.
+        corpus_name = "pretrain" if args.stage == "a" else "data"
+        label = f"{corpus_name}@{args.bin_edges}" if args.bin_edges else corpus_name
+        try:
+            gate2 = dataclasses.replace(
+                gate2, ceiling_gain=args.ceiling_gain, ceiling_corpus=label
+            )
+        except ValueError as exc:
+            # Gate2Params re-validates on replace, which is what catches a
+            # ceiling given in percent rather than as a fraction. Worth a
+            # clean message: this is the flag a human types five times in a
+            # row while launching a sweep.
+            print(f"\n--ceiling-gain: {exc}", file=sys.stderr)
+            return 2
+        print(f"ceiling:   {args.ceiling_gain:+.3%} for bins {args.bin_edges} "
+              "(--ceiling-gain)")
     # The ceiling belongs to a corpus, and this is the last point before the
     # GPU at which a mismatch is cheap to find.
     try:
-        gate2.check_corpus("pretrain" if args.stage == "a" else "data")
+        gate2.check_corpus(
+            gate2.ceiling_corpus
+            if args.ceiling_gain is not None
+            else ("pretrain" if args.stage == "a" else "data")
+        )
     except ValueError as exc:
         print(f"\n{exc}", file=sys.stderr)
         return 3
