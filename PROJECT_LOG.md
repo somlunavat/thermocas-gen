@@ -1661,3 +1661,63 @@ short on data.
 
 ICML 2027's deadline could not be confirmed; a third-party tracker projects
 22 January 2027, extrapolated from the 2026 cycle. To verify before scheduling.
+
+### 2026-10-27 — Ceiling sweep: the ceiling moves 4.2x, and non-monotonically
+
+Full analysis in `results/ceiling_sweep_20261027/analysis.md`. The question was
+whether the corpus can be varied to produce a spread of predicted ceilings
+wide enough for short training runs to separate. It can: +0.095% to +0.398%
+corpus-wide across threshold, balance and granularity, a 4.2x range against a
+measurement that reproduced to within 10% between validation and test.
+
+`15_ceiling_sweep.py` (new) makes one pass over the 113.8M residues,
+accumulating counts per (cluster, OGT), then computes every variant from those
+counts -- so a sweep costs about what a single ceiling costs.
+
+**The threshold curve is non-monotonic, which is the finding.** It rises from
++0.095% at 30 C to +0.257% at 55 C and falls to +0.102% at 80 C. A monotonic
+trend would have been confoundable with "higher threshold, harder task" or
+"...less data"; an interior peak is not. The mechanism was predictable and is
+visible in the balance column: 89% thermophilic at 30 C, 7% at 80 C, so a
+near-constant label carries almost nothing at either end. This turns the GPU
+half from "does gain rise with the ceiling" into "does gain peak where the
+ceiling peaks", which is sharper and cheaper to falsify.
+
+**Equal-mass binning at 2 classes puts the edge at exactly 45 C**, the
+threshold the config has carried by convention since 2026-10-20. Independent
+arithmetic agreeing with a choice made for other reasons. Granularity gives
++0.154% / +0.303% / +0.374% / +0.381% at 2/3/4/5 classes, so the first-order
+signal is exhausted at 4 -- the knee can be reported rather than asserted.
+
+**Two corpus facts the sweep exposed.** There is an 8 C gap at 37-45 C: no
+species has an OGT in (37, 45), so thresholds of 40 and 45 bin identically and
+the corpus supports ~9 distinct thresholds, not 11. The 45 C convention sits
+in the middle of an empty band rather than on a knife edge. And there are only
+47 distinct OGT values across 311,987 rows, because Gosha labels are
+organism-level and rounded -- the `ogt_c` the auxiliary head regresses on is
+much coarser than "continuous" implies, and should be described that way.
+
+**A test caught a real bug before it reached the numbers.** `quantile_edges`
+appended the OGT that *completed* a quantile rather than the one that starts
+the next class. With upper-exclusive bins that shifts a whole group into the
+class above, and when the first group alone exceeds the target it returns an
+edge at the minimum OGT -- every residue in one class, and a confidently
+reported ceiling for a corpus with no contrast at all. The first run's
+granularity rows were wrong because of it (2 classes at edge 37, not 45); the
+sweep was rerun after the fix. The test that caught it was written from the
+property rather than from the output, which is why it caught it.
+
+**Design for the GPU half:** five runs at thresholds 30 / 45 / 55 / 75 C plus
+a 4-class variant, ~3,000 steps each (conditioning saturated at 2,500 on the
+full run), validation-only gate at 2,000 examples. Every variant is a pure
+relabeling -- `temp_bin` is read straight from the label table and the
+sequences, clusters and splits are untouched -- so all five train on identical
+residues. About 2.95 h and ~$3.30 per run, **~$17 for all five** against ~$79
+remaining.
+
+The rebalanced axis is deliberately excluded from the experiment: equalizing
+class mass needs resampling, which changes the training data as well as the
+label and confounds the two. It stays in `sweep.txt` as corpus description.
+
+Nothing here is evidence for the claim. It is evidence the claim is cheap to
+test and that the test can fail, which is the only reason to run it first.

@@ -1,0 +1,43 @@
+
+=== threshold sweep (2 classes), natural balance ===
+  edge  thermo%    corpus    within  clusters      residues
+    30   89.2%  +0.095%  +0.066%     1,089    43,056,996
+    35   58.4%  +0.198%  +0.114%     2,174    61,326,576
+    40   39.9%  +0.154%  +0.172%     1,552    51,853,524
+    45   39.9%  +0.154%  +0.172%     1,552    51,853,524
+    50   34.3%  +0.190%  +0.168%     1,319    48,038,738
+    55   28.0%  +0.257%  +0.176%       997    38,379,357
+    60   20.5%  +0.207%  +0.146%       891    35,194,777
+    65   16.1%  +0.184%  +0.140%       712    29,986,381
+    70   11.9%  +0.161%  +0.106%       524    25,489,660
+    75    8.6%  +0.118%  +0.081%       358    19,061,276
+    80    7.0%  +0.102%  +0.129%       278     9,354,304
+
+=== threshold sweep, classes rebalanced to equal mass ===
+  edge    corpus   vs natural
+    30  +0.251%        2.63x
+    35  +0.205%        1.03x
+    40  +0.161%        1.04x
+    45  +0.161%        1.04x
+    50  +0.211%        1.11x
+    55  +0.317%        1.24x
+    60  +0.317%        1.54x
+    65  +0.341%        1.85x
+    70  +0.384%        2.39x
+    75  +0.381%        3.22x
+    80  +0.398%        3.90x
+
+=== granularity: equal-residue-mass bins ===
+ classes              edges (C)    corpus    within  clusters
+       2                     45  +0.154%  +0.172%     1,552
+       3                 32, 52  +0.303%  +0.199%     2,240
+       4             32, 45, 56  +0.374%  +0.276%     2,274
+       5         32, 33, 45, 62  +0.381%  +0.285%     2,356
+
+=== is this testable? ===
+  corpus-wide ceiling ranges +0.095% to +0.257% (2.7x) across the threshold sweep
+  configured gate ceiling    +0.172% (45 C, within-cluster)
+  stage A measured gain      +0.265% (validation, 2026-10-26)
+  The spread is wide enough that short runs can separate the variants. What this
+  does NOT establish is that measured gain follows it -- that is the GPU half, and
+  it is the half that can falsify the claim.
