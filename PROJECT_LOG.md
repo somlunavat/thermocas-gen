@@ -1602,3 +1602,62 @@ upward-biased, so +0.119% is both fragile and probably optimistic. Writing it
 into `conditioning_gate/ceiling_gain` would give stage B a confident threshold
 resting on three protein families — the same mistake as the 2% figure, with a
 measurement attached to make it look earned.
+
+### 2026-10-27 — Related-work check: the ceiling is open, two of the three options are not
+
+Full notes in `results/related_work_20261027.md`. The check was run to decide
+between three framings; it decided two of them.
+
+**The gating question — has the conditioning ceiling been published? — is no.**
+Four searches from different directions (protein conditional generation,
+controllable text generation, information-theoretic limits on conditioning,
+label informativeness) found nothing measuring the achievable gain from a
+conditioning label. The nearest work either bounds MI as a *training
+mechanism* for controllability (arXiv 2203.02055) or uses entropy reduction to
+rank *annotations* (arXiv 1812.10358). The ceiling, and the claim that effect
+size is a property of the corpus, are open.
+
+**Option 2 is dead. OpenCRISPR-1 (Nature 2025) fine-tuned ProGen2-base — this
+project's exact backbone — on the CRISPR-Cas Atlas**, generated 4M sequences,
+landed >400 mutations from SpCas9 with activity matching it in human cells,
+and released the sequence and the Atlas publicly. A 1,019-sequence unvalidated
+fine-tune with composition proxies is a weaker version of that paper using the
+same model. Nothing about the Cas9 framing survives it.
+
+**Option 3 is largely occupied. NOMELT (Sci. Rep. 2025) is meso-to-thermo
+translation trained on >4M homolog pairs across 2.7k Pfam families**, with
++15.5 K measured on an Engrailed Homeodomain variant. That is the
+paired-ortholog-across-families design proposed as the strong version of
+Option 3, published, at 2.7k families against this corpus's 1,552 both-class
+clusters.
+
+**Temperature conditioning in PLMs is crowded, and the data gap is 340x.**
+PRIME (Sci. Adv. 2024) and ThermoFormer (NeurIPS 2024 workshop) each train on
+~96M sequence–OGT pairs; stage A has 279,980 sequences. Steering PLMs (ICML
+2025) already does thermostability control in PLMs via activation addition on
+ESM2/ESM3/ProLLaMA with fine-tuning as a baseline. No framing in which corpus
+scale or the conditioning mechanism is the contribution survives this.
+
+Two corrections to our own account follow. The auxiliary OGT regression head
+in `model.yaml` is **PRIME's idea** and must be cited as such rather than
+presented as ours. And `Off-Manifold Collapse in Guided Protein Language
+Models` (arXiv 2608.18597) independently reports that hard steering lowers
+ESMFold pLDDT, which supports the brief's standing constraint that structure
+prediction is a validity filter and not a thermostability test — a citation to
+use, not a competitor.
+
+**The reframing this forces, and it is a better paper than what was proposed.**
+The crowded field becomes the argument rather than the competition: four
+methods across Sci. Adv., NeurIPS, ICML and Sci. Rep. claim temperature
+control over sequence models, and none of them establishes how much control a
+given corpus permits. The contribution is the missing denominator — a
+corpus-only, CPU-cheap upper bound on what any temperature-conditioning method
+can achieve, validated by varying the corpus and checking that measured gain
+tracks the predicted ceiling, with Cas9 as the worked negative case where the
+bound says infeasible before a GPU is bought.
+
+Not "we conditioned a PLM on growth temperature", which is crowded and 340x
+short on data.
+
+ICML 2027's deadline could not be confirmed; a third-party tracker projects
+22 January 2027, extrapolated from the 2026 cycle. To verify before scheduling.
