@@ -57,13 +57,36 @@ def _function(gpu: str):
 
 
 def train(args) -> int:
+    # The ceiling sweep's variants travel as extra argv rather than as new
+    # parameters on _train, because they are arguments to 11_train.py and
+    # adding a parameter to the remote function means redeploying before any
+    # of them can be used.
+    extra: list[str] = []
+    if args.bin_edges:
+        extra += ["--bin-edges", str(args.bin_edges)]
+    if args.ceiling_gain:
+        extra += ["--ceiling-gain", str(args.ceiling_gain)]
+    if args.bin_edges and not args.ceiling_gain:
+        # 11_train.py refuses this too, but it refuses it on the GPU, after
+        # the container has started and the checkpoint has downloaded. A
+        # variant's ceiling is not the configured one.
+        print(
+            "--bin-edges needs --ceiling-gain: the variant's ceiling is not "
+            "the configured one.\nGet it from "
+            "results/ceiling_sweep_20261027/sweep.txt.",
+            file=sys.stderr,
+        )
+        return 2
+    if extra:
+        print(f"variant:  {' '.join(extra)}")
+
     call = _function(args.gpu).spawn(
         args.stage,
         args.max_steps or None,
         args.gate2_limit or None,
         args.init_from or None,
         args.batch_size or None,
-        [],
+        extra,
         args.run_name,
         args.resume,
     )
@@ -116,6 +139,19 @@ def main() -> int:
     run.add_argument("--batch-size", type=int, default=0)
     run.add_argument("--run-name", default="default")
     run.add_argument("--resume", action="store_true")
+    run.add_argument(
+        "--bin-edges",
+        default="",
+        help="growth-temperature edges in C for a ceiling-sweep variant, "
+             "e.g. 55 or 32,45,56. Relabels the corpus; splits are unchanged.",
+    )
+    run.add_argument(
+        "--ceiling-gain",
+        type=float,
+        default=0.0,
+        help="the variant's own ceiling as a fraction (0.00257 for +0.257%%), "
+             "from results/ceiling_sweep_20261027/sweep.txt",
+    )
     run.set_defaults(func=train)
 
     check = sub.add_parser("status", help="has a spawned run finished?")
