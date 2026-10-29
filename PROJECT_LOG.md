@@ -1781,3 +1781,67 @@ flag sets only the denominator printed in its own report (1.51x rather than
 against the corpus-wide column for all five. Separately, the launches omitted
 `--probe-every`, so probes fired once at step 2,500 and the per-variant probe
 curve costed earlier was never requested -- actual spend was ~$14, not ~$20.
+
+---
+
+## 2026-10-29 — The ceiling's shape reproduces on a second corpus; its peak needs the sampling design
+
+Step 1 of the post-sweep plan: validate the conditioning ceiling on a corpus
+nobody here designed. CPU only, no GPU spend. Full write-up in
+`results/external_corpus_20261029/findings.md`.
+
+**Built** (`scripts/16_external_corpus.py`, `configs/external.yaml`,
+`configs/external_balanced.yaml`): UniProtKB/Swiss-Prot release 2026_03
+(575,748 entries) joined to Engqvist's growth temperatures (BMC Microbiology
+18:177, 2018; Zenodo 10.5281/zenodo.1175609, CC BY 4.0; 13,816 bacterial and
+archaeal organisms after plausibility bounds). 204,039 sequences over 1,816
+species and 64.9M residues, clustered at 50% identity into 41,674 clusters.
+A second form puts the same corpus through stage A's own design -- 500 per
+species, mesophilic side cut to match the thermophilic one -- giving 35,361
+sequences over 380 species. Neither is training data and neither is screened
+for Cas9; they exist to have their residues counted, and
+`16_external_corpus.py` says so on every run.
+
+**Result 1.** Under matched sampling design the two corpora agree on the
+threshold curve: Spearman +0.809, Pearson +0.823 over eleven thresholds, both
+peaking in the interior (55 C ours, 60 C external, adjacent sweep steps) and
+falling at both ends. Different OGT database, different sequence set,
+different curation level, different 1,816 organisms, same curve. The shape is
+not an artifact of our corpus.
+
+**Result 2.** Without matched design it is: the uncapped, unbalanced external
+corpus peaks at 35 C and agreement drops to +0.582. The cause is in the
+`thermo%` column -- the hot class falls from 49.4% to 9.5% of residues between
+35 and 40 C, because Swiss-Prot is dominated by clinical and model organisms
+annotated at 37 C with almost nothing between 37 and 45. So the peak's
+location is a joint property of corpus and sampling design, and a ceiling
+quoted without the design is not reproducible. That needs saying in the paper
+rather than discovering in review.
+
+**Result 3.** The conventional 45 C threshold is below the peak in all three
+corpora: 1.67x in stage A (+0.154% against +0.257%), 1.48x in the natural
+external corpus, 1.26x in the balanced one. This is the actionable claim --
+the threshold is a free parameter nobody tunes, tuning it is worth 1.3-1.7x in
+available signal, and it costs CPU-minutes.
+
+**Result 4.** The obvious objection -- that the sweep is finding the median
+OGT, since mutual information peaks at an even marginal -- fails on two of the
+three corpora. `15_ceiling_sweep.py` now reports `H(bin)` and `I/H` so this is
+answerable from the output rather than by argument. Balance correlates with
+the ceiling everywhere (Spearman +0.55 to +0.66) and sets the peak only in the
+corpus with the 37 C cliff; in both designed corpora the peak sits 15-20 C
+above the most balanced threshold.
+
+**Still n=1 on the GPU side.** Everything here is the ceiling. Whether
+measured gain follows it on a corpus we did not build is untested, and is the
+five-variant design re-run on the external corpus at ~$14.
+
+**Two pieces of engineering fell out.** `read_fasta` now reads `.gz`, which is
+what makes a 94 MB release file usable without writing it out twice. And the
+downloader is a single versioned release file rather than a REST query: the
+bulk `stream` endpoint dies partway through a 357k-entry response with
+"HTTP/2 stream 1 was not closed cleanly: INTERNAL_ERROR", and again over
+HTTP/1.1, leaving a truncated gzip that only fails when something reads the
+end of it; cursor pagination worked but needed ~715 requests at ~27 s each.
+The release file also carries a release number, which is better provenance
+than a query run on an unrecorded date.

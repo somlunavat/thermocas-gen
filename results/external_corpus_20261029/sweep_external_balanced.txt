@@ -1,0 +1,43 @@
+
+=== threshold sweep (2 classes), natural balance ===
+  edge  thermo%    corpus    within   H(bin)       I/H  clusters      residues
+    30   81.8%  +0.106%  +0.127%   0.4752   0.00222       127     1,701,232
+    35   68.7%  +0.213%  +0.151%   0.6215   0.00343       153     2,013,230
+    40   49.8%  +0.274%  +0.219%   0.6931   0.00396       144     1,912,592
+    45   49.5%  +0.269%  +0.221%   0.6931   0.00388       143     1,908,004
+    50   44.9%  +0.304%  +0.241%   0.6878   0.00443       151     1,948,666
+    55   41.3%  +0.322%  +0.237%   0.6781   0.00476       158     2,004,933
+    60   33.1%  +0.339%  +0.272%   0.6347   0.00534       134     1,832,216
+    65   27.5%  +0.313%  +0.278%   0.5883   0.00532       130     1,803,422
+    70   22.0%  +0.238%  +0.176%   0.5264   0.00454        78     1,238,992
+    75   16.8%  +0.203%  +0.180%   0.4529   0.00448        41       596,516
+    80   13.8%  +0.158%  +0.236%   0.4011   0.00393        28       302,242
+
+=== threshold sweep, classes rebalanced to equal mass ===
+  edge    corpus   vs natural
+    30  +0.178%        1.68x
+    35  +0.248%        1.17x
+    40  +0.274%        1.00x
+    45  +0.269%        1.00x
+    50  +0.308%        1.01x
+    55  +0.333%        1.03x
+    60  +0.383%        1.13x
+    65  +0.393%        1.26x
+    70  +0.351%        1.47x
+    75  +0.367%        1.81x
+    80  +0.336%        2.13x
+
+=== granularity: equal-residue-mass bins ===
+ classes              edges (C)    corpus    within  clusters
+       2                     42  +0.274%  +0.219%       144
+       3                 37, 59  +0.412%  +0.339%       178
+       4             32, 42, 67  +0.425%  +0.378%       209
+       5         31, 42, 56, 71  +0.432%  +0.382%       183
+
+=== is this testable? ===
+  corpus-wide ceiling ranges +0.106% to +0.339% (3.2x) across the threshold sweep
+  configured gate ceiling    +0.172% (45 C, within-cluster)
+  stage A measured gain      +0.265% (validation, 2026-10-26)
+  The spread is wide enough that short runs can separate the variants. What this
+  does NOT establish is that measured gain follows it -- that is the GPU half, and
+  it is the half that can falsify the claim.

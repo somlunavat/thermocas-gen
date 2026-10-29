@@ -6,6 +6,7 @@ installed, and so there is no ambiguity about how records are parsed.
 
 from __future__ import annotations
 
+import gzip
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -52,13 +53,18 @@ class FastaRecord:
 
 
 def read_fasta(path: str | Path) -> Iterator[FastaRecord]:
-    """Stream records from a FASTA file.
+    """Stream records from a FASTA file, gzipped or not.
 
     Sequence lines are concatenated with whitespace stripped and uppercased.
     A duplicate id raises: downstream joins are keyed by id, and a silent
     overwrite would drop a sequence.
+
+    A ``.gz`` suffix is read through gzip rather than decompressed to disk;
+    UniProt serves bulk downloads compressed and the external corpus is 180 MB
+    expanded, which is not worth writing out twice.
     """
     path = Path(path)
+    opener = gzip.open if path.suffix == ".gz" else None
     seen: set[str] = set()
     seq_id: str | None = None
     description = ""
@@ -69,7 +75,7 @@ def read_fasta(path: str | Path) -> Iterator[FastaRecord]:
             return None
         return FastaRecord(seq_id, description, "".join(chunks))
 
-    with path.open() as handle:
+    with (opener(path, "rt") if opener else path.open()) as handle:
         for lineno, raw in enumerate(handle, start=1):
             line = raw.strip()
             if not line:

@@ -1,0 +1,90 @@
+# External validation corpus, put through stage A's selection design.
+#
+# Generated from configs/external.yaml; keep the two in step. Only `paths`
+# and `sampling` differ.
+#
+# WHY THIS EXISTS. The ceiling sweep (results/ceiling_sweep_20261027) showed
+# that measured conditioning gain follows the corpus-only ceiling across
+# threshold choices -- on ONE corpus, ours, built by our own species-balancing
+# and per-species-capping design. "A cheap corpus statistic predicts which
+# label definition conditions better" is a claim about corpora in general, and
+# with n=1 the alternative explanation is that the curve is a property of how
+# we built stage A. This corpus is the second observation.
+#
+# NEVER TRAIN ON THIS. It is a measurement corpus. It has had no Cas9
+# annotation screen and no alignment screen against the held-out Cas9
+# sequences, so if it reached stage A the stage B leakage gate would be
+# measuring nothing. configs/pretrain.yaml is the corpus training reads.
+#
+# WHAT IS INDEPENDENT, AND WHAT IS NOT. Independent: the sequence set
+# (UniProtKB reviewed bacteria and archaea in full, no species selection and
+# no per-species cap, against our curated-and-capped sample of Gosha-selected
+# species), the label resolution (95 distinct temperatures against 47), and
+# the organism set. Not independent: both OGT tables scrape overlapping
+# culture-collection catalogues, so agreement is evidence about corpora, not
+# about growth-temperature measurement. See thermocas/data/engqvist.py.
+
+seed: 20261028
+
+paths:
+  # Engqvist, BMC Microbiology 18:177 (2018). Zenodo 10.5281/zenodo.1175609,
+  # CC BY 4.0. One row per organism: organism, domain, temperature, taxid.
+  ogt_source: data/raw/engqvist/temperature_data.tsv
+  # UniProtKB/Swiss-Prot, the whole reviewed release file, read through gzip.
+  # Eukaryotic entries drop out of the join because the Engqvist table is
+  # loaded prokaryotes-only, so the subset never has to be requested.
+  sequences: data/raw/external/uniprot_sprot.fasta.gz
+  labeled_fasta: data/processed/external_balanced_proteins.fasta
+  label_table: data/processed/external_balanced_label_table.csv
+  clusters: data/processed/external_balanced_clusters.tsv
+
+# What --download fetches. Reviewed (Swiss-Prot) only: curation is what makes
+# this a different slice from stage A's, which takes unreviewed entries too
+# because reviewed coverage outside model organisms is thin. The release
+# number goes in PROJECT_LOG.md, which is why the date file is fetched beside
+# the sequences.
+download:
+  url: https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/complete/uniprot_sprot.fasta.gz
+  release_file: https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/complete/reldate.txt
+
+# Matched to configs/pretrain.yaml's `sampling` bounds so that sequence-level
+# filtering is not a difference between the two corpora. The comparison is
+# supposed to be about label definition and species composition; letting the
+# length window differ as well would confound it.
+filter:
+  min_length: 60
+  max_length: 1024
+  allowed_residues: ACDEFGHIKLMNPQRSTVWY
+  drop_exact_duplicates: true
+
+# The sweep recomputes these for every variant; the values here only set the
+# `temp_bin` column written into the label table, and are the project
+# convention so that the external table is readable alongside the stage A one.
+growth_temperature:
+  bins:
+    - {name: meso,   min: -.inf, max: 45}
+    - {name: thermo, min: 45,    max: .inf}
+  min_per_bin: 200
+  require_crosscheck: false   # Engqvist ships no per-collection columns
+
+ogt:
+  min_plausible_c: -20.0
+  max_plausible_c: 130.0
+
+# The same external corpus put through stage A's own selection design: a
+# per-species cap, and the mesophilic side cut down to match the thermophilic
+# one at the 45 C convention. configs/external.yaml is the uncapped,
+# unbalanced counterpart. If the two sweeps have the same shape, the shape is
+# the databases'; if only this one matches stage A, the shape is our design's.
+sampling:
+  max_proteins_per_species: 500
+  balance: match_smallest
+
+# Same clustering parameters as stage A, so the within-cluster column of the
+# two sweeps is computed over comparable groupings.
+cluster:
+  tool: mmseqs2
+  min_seq_id: 0.50
+  coverage: 0.80
+  cov_mode: 0
+  cluster_mode: 0
