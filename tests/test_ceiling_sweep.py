@@ -52,6 +52,41 @@ class TestBinning:
         assert MOD.bin_of(60.0, edges) == "b2"
 
 
+class TestLabelEntropy:
+    """H(bin) is reported so that "the ceiling is only class balance" is
+    answerable from the sweep output rather than by argument."""
+
+    def test_an_even_two_class_split_is_one_bit(self):
+        assert MOD.label_entropy({"a": 50, "b": 50}) == pytest.approx(math.log(2))
+
+    def test_a_single_class_carries_no_label_information(self):
+        assert MOD.label_entropy({"a": 100}) == pytest.approx(0.0)
+
+    def test_an_empty_class_is_not_a_class(self):
+        """0 * log 0 is 0 in the limit and a ZeroDivisionError in Python, and
+        an edge outside the corpus's range produces exactly this."""
+        assert MOD.label_entropy({"a": 100, "b": 0}) == pytest.approx(0.0)
+
+    def test_it_scales_with_the_number_of_even_classes(self):
+        assert MOD.label_entropy({c: 10 for c in "abcd"}) == pytest.approx(math.log(4))
+
+    def test_a_skewed_split_carries_less_than_an_even_one(self):
+        assert MOD.label_entropy({"a": 99, "b": 1}) < MOD.label_entropy(
+            {"a": 50, "b": 50}
+        )
+
+    def test_an_empty_corpus_is_zero_not_an_error(self):
+        assert MOD.label_entropy({}) == 0.0
+
+    def test_information_never_exceeds_the_label_entropy(self):
+        """I(residue; bin) <= H(bin) is what makes I/H a fraction. If this
+        ever failed, the two would be computed over different masses."""
+        counts = {"a": {"A": 900, "C": 100}, "b": {"A": 100, "C": 900}}
+        info, _ = MOD.CEIL.mutual_information(counts)
+        totals = {b: sum(c.values()) for b, c in counts.items()}
+        assert info <= MOD.label_entropy(totals)
+
+
 class TestRebalance:
     def test_it_equalizes_the_class_totals(self):
         out = MOD.rebalance({"a": {"A": 900, "C": 100}, "b": {"A": 50, "C": 50}})

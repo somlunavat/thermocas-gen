@@ -45,6 +45,7 @@ import argparse
 import collections
 import csv
 import importlib.util
+import math
 import sys
 from pathlib import Path
 
@@ -100,6 +101,29 @@ def collect(sequences: Path, rows: dict[str, dict[str, str]]) -> Counts:
         if kept % 50000 == 0:
             print(f"  ...{kept:,} sequences", flush=True)
     return counts
+
+
+def label_entropy(totals: dict[str, int]) -> float:
+    """H(bin) in nats, from the residue mass in each class.
+
+    Reported beside the ceiling because the obvious objection to the whole
+    measure is that it only tracks class balance: mutual information is
+    largest when the marginal is even, so a threshold sweep could be a
+    roundabout way of finding the median OGT. ``I/H`` -- information per nat
+    of label -- is what distinguishes the two. If the ceiling were only
+    balance, I/H would be flat across thresholds and the ceiling would peak
+    wherever H does.
+    """
+    total = sum(totals.values())
+    if total <= 0:
+        return 0.0
+    entropy = 0.0
+    for mass in totals.values():
+        if mass <= 0:
+            continue
+        p = mass / total
+        entropy -= p * math.log(p)
+    return entropy
 
 
 def bin_of(ogt: float, edges: tuple[float, ...]) -> str:
@@ -247,7 +271,7 @@ def main() -> int:
     emit()
     emit("=== threshold sweep (2 classes), natural balance ===")
     emit(f"{'edge':>6} {'thermo%':>8} {'corpus':>9} {'within':>9} "
-         f"{'clusters':>9} {'residues':>13}")
+         f"{'H(bin)':>8} {'I/H':>9} {'clusters':>9} {'residues':>13}")
     thresholds = (30.0, 35.0, 40.0, 45.0, 50.0, 55.0, 60.0, 65.0, 70.0, 75.0, 80.0)
     for edge in thresholds:
         edges = (edge,)
@@ -258,9 +282,11 @@ def main() -> int:
         wc_info, n_clusters, wc_residues = within_cluster(
             counts, edges, args.min_cluster_residues
         )
+        entropy = label_entropy(totals)
         emit(f"{edge:>6.0f} {hot:>7.1%} "
              f"{CEIL.gain_from_information(info):>+8.3%} "
              f"{CEIL.gain_from_information(wc_info):>+8.3%} "
+             f"{entropy:>8.4f} {info / entropy if entropy else 0.0:>9.5f} "
              f"{n_clusters:>9,} {wc_residues:>13,}")
 
     emit()
