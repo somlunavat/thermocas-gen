@@ -1721,3 +1721,63 @@ label and confounds the two. It stays in `sweep.txt` as corpus description.
 
 Nothing here is evidence for the claim. It is evidence the claim is cheap to
 test and that the test can fail, which is the only reason to run it first.
+
+---
+
+## 2026-10-28 — The ceiling predicts which variant conditions better, not how much
+
+Ran the GPU half designed yesterday: five Stage A runs at 3,000 steps, each a
+pure relabeling of the same corpus (thresholds 30 / 45 / 55 / 75 C, plus a
+4-class variant at 32/45/56). Concurrent on A10s, 2.6 h each, ~$14. Full
+write-up in `results/ceiling_sweep_20261027/measured.md`, raw reports in
+`results/ceiling_sweep_20261027/runs/`.
+
+| run | edges (C) | corpus ceiling | val gain | test gain | gate 2 |
+|---|---|---|---|---|---|
+| `sweep_t30` | 30 | +0.095% | +0.037% | +0.033% | **FAILED** (0.39x) |
+| `sweep_t45` | 45 | +0.154% | +0.260% | +0.251% | passed |
+| `sweep_t55` | 55 | +0.257% | +0.255% | +0.238% | passed |
+| `sweep_t75` | 75 | +0.118% | +0.121% | +0.119% | passed |
+| `sweep_c4` | 32,45,56 | +0.374% | +0.249% | +0.218% | passed |
+
+**The falsifiable prediction held.** The ceiling rises from 30 C to a peak near
+55 C and falls by 75 C, and measured gain does the same: 0.037 -> 0.255 ->
+0.121. t55 beats t30 by 0.218 pp against a 0.021 pp noise floor and t75 by
+0.134 pp against 0.027 pp. 30 C is the most lopsided threshold in the sweep and
+the worst-conditioning variant, and the corpus-only bound called that before
+any GPU time was spent. Spearman across the four thresholds is +0.80 on both
+validation and test -- which with n=4 is not significant on its own, so the
+evidence is the shape, not the coefficient.
+
+**Three things did not hold, and they bound the claim.**
+
+1. `gain / ceiling` spans 0.39x to 1.69x -- a 4.3x spread. The ceiling orders
+   variants; it does not estimate the gain. Overshooting is legitimate (it is a
+   unigram bound and the model has context), but a quantity undershot by 2.6x
+   in one variant and overshot by 1.7x in another cannot be written up as "what
+   gain to expect".
+2. **It does not rank across axes.** `sweep_c4` has the highest ceiling by 1.5x
+   and a lower measured gain than both 45 C and 55 C. Adding classes raises the
+   bound without raising what the model extracts, so one number does not order
+   relabelings that differ in kind. This is the sharpest open question the
+   experiment produced.
+3. The peak's location is unresolved: t45 and t55 are 0.19 sigma (val) and 0.70
+   sigma (test) apart, with t45 nominally ahead while its ceiling is 1.7x
+   lower. With 47 distinct OGT values and the 8 C gap at 37-45, the corpus
+   supports ~9 effective thresholds; "peaks in the interior" is supported,
+   "peaks at 55 C" is not.
+
+**Two useful controls fell out.** `sweep_t45` reproduces the configured binning
+exactly and reaches +0.260% at 3,000 steps against the 20,000-step baseline's
++0.265%, so the cross-variant comparison is between converged conditioning
+rather than between training budgets. And `sweep_t30` is the only Gate 2
+failure -- significant at z = 8.5 and still too small for its own corpus, which
+is precisely the distinction the gate was built to draw.
+
+**Reporting correction:** `sweep_t45` was launched with the within-cluster
+`--ceiling-gain 0.00172` while the other four carry corpus-wide figures. That
+flag sets only the denominator printed in its own report (1.51x rather than
+1.69x); it does not touch training or the measured gain. Every number above is
+against the corpus-wide column for all five. Separately, the launches omitted
+`--probe-every`, so probes fired once at step 2,500 and the per-variant probe
+curve costed earlier was never requested -- actual spend was ~$14, not ~$20.

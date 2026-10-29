@@ -1,0 +1,18 @@
+perplexity with the correct growth-temperature token: 3.4008
+perplexity with shuffled tokens: 3.4097 (mean of 5)
+  individual shuffles: 3.4097, 3.4104, 3.4089, 3.4094, 3.4101
+relative gain: +0.260%
+
+is the effect real?
+  beats every shuffle   True
+  z vs shuffle spread   15.2  (required 3.0; spread 0.000582)
+  -> SIGNIFICANT
+
+is the effect large, given what the corpus allows?
+  corpus ceiling        +0.172% (scripts/13_conditioning_ceiling.py)
+  gain / ceiling        1.51x  (required 0.50x)
+  above the unigram ceiling, which is expected of a model that also has
+  context and can use substitutions a residue histogram cannot see.
+  -> LARGE ENOUGH
+
+GATE 2 PASSED
