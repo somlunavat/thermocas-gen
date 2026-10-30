@@ -1845,3 +1845,49 @@ HTTP/1.1, leaving a truncated gzip that only fails when something reads the
 end of it; cursor pagination worked but needed ~715 requests at ~27 s each.
 The release file also carries a release number, which is better provenance
 than a query run on an unrecorded date.
+
+## 2026-10-29 — The paper is a measurement paper, and its skeleton is written
+
+`paper/draft.md`. Every table in it is wired to numbers already committed
+under `results/`; the prose of the middle sections is an outline carrying the
+claim each one has to make and the evidence it cites. Nothing in the skeleton
+waits on a GPU run.
+
+**The framing, settled.** Not "we conditioned a PLM on growth temperature" —
+OpenCRISPR-1 did that on this exact backbone, in Nature, validated in human
+cells, and PRIME and ThermoFormer train on ~340x more labeled sequence. The
+paper is that this literature reports conditioning gains with no denominator,
+that a corpus-only quantity supplies one for CPU-minutes, and that the
+conventional 45 C threshold is 1.3–1.7x below the optimum in all three corpora
+measured. The small absolute gains stop being an embarrassment under this
+framing: +0.26% is uninterpretable until you know what the corpus made
+available, which is the gap.
+
+**What goes in as a contribution rather than a limitation.** Three failures
+get their own numbered section: the bound ranks but does not estimate
+(0.39x–1.69x), it does not rank across granularities and entropy normalization
+makes the correlation negative (+0.80 → −0.20 on the thresholds), and the
+peak's location is unresolved at 0.19σ/0.70σ. A measurement paper that states
+where its measure breaks is worth more than one that does not, and all three
+are already measured.
+
+**Cas9 becomes section 7 rather than the paper.** As a worked negative: Gate 1
+fails at 23 thermophilic sequences against a floor of 200, Gate 2 is not
+evaluable because the test split holds none, leakage fails at 222 pairs over
+21 held-out sequences, and the corpus-wide bound is +0.008% against stage A's
++0.154%. Three cheap checks agree and the experiment is correctly abandoned
+for the price of a CPU afternoon. The within-cluster figure for that corpus
+(+0.119% from three clusters) is recorded as untrustworthy, not configured.
+
+**Figures.** Two, both computable from committed results: predicted-vs-measured
+scatter with the identity line and `sweep_c4` marked distinctly, and the
+threshold curve for three corpora on shared axes with the `thermo%` column
+beside it so the 37 C cliff is visible.
+
+**The remaining gap is ~$31 of A10 time, not another experiment.** Five runs
+on the design-matched external corpus (~$10) to make 5.1 read "two corpora",
+four more thresholds at 35/50/65/70 (~$12) to make the Spearman quotable as a
+statistic, three runs on a second backbone (~$9). Prerequisites that need no
+GPU: the external corpora have `cluster_id` filled and `split` empty, and they
+are unscreened for Cas9, so a checkpoint trained on them could not initialize
+stage B.
