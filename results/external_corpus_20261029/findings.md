@@ -147,3 +147,29 @@ above.
 **Eukaryotes are excluded** (7,682 of Engqvist's 21,498 rows), as are the
 299,890 Swiss-Prot entries whose organism is absent from Engqvist. This is a
 prokaryotic result.
+
+## Addendum, 2026-10-30: the Cas9 screen does not move these numbers
+
+The design-matched corpus became training data on 2026-10-30, which required
+the Cas9 annotation and alignment screen that `configs/external_balanced.yaml`
+previously said it had not had. The screen removed **11 of 35,361 sequences**
+(0.03%) at >30% identity over >=50% coverage to a held-out Cas9, the strictest
+of them at 61.0%.
+
+Re-running the sweep on the screened corpus
+(`sweep_external_balanced_screened.txt`) leaves the corpus-wide column
+unchanged to 0.001 pp at every threshold: 30 C moves +0.106% to +0.105% and
+70 C moves +0.238% to +0.239%, and the other nine are identical. The peak
+stays at 60 C and +0.339%, so Results 1, 3 and 4 above stand as written and
+the corpus the GPU runs train on is the corpus these ceilings describe.
+
+The within-cluster column moves a little more -- 65 C from +0.278% to +0.272%
+-- because removing 11 sequences changes cluster membership. That column is
+not used for any comparison here, for the reasons already given above.
+
+Splits were also assigned, cluster-disjoint at 90/5/5 on seed 20261028:
+train 31,968 / val 1,687 / test 1,695. Both classes are present in both
+held-out splits (val meso=792 thermo=895, test meso=805 thermo=890), which is
+the condition the Cas9 corpus failed and the reason Gate 2 was not evaluable
+there. The stage A gate passes on this corpus at 6,753 and 7,273 clusters per
+bin against a floor of 200.

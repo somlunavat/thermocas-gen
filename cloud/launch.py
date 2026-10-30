@@ -62,6 +62,8 @@ def train(args) -> int:
     # adding a parameter to the remote function means redeploying before any
     # of them can be used.
     extra: list[str] = []
+    if args.corpus:
+        extra += ["--corpus", args.corpus]
     if args.bin_edges:
         extra += ["--bin-edges", str(args.bin_edges)]
     if args.ceiling_gain:
@@ -139,6 +141,13 @@ def main() -> int:
     run.add_argument("--batch-size", type=int, default=0)
     run.add_argument("--run-name", default="default")
     run.add_argument("--resume", action="store_true")
+    run.add_argument(
+        "--corpus",
+        default="",
+        help="stage A corpus config name, overriding 'pretrain'. Upload it to "
+             "the volume first: modal run cloud/modal_app.py::upload "
+             "--corpus <name>",
+    )
     run.add_argument(
         "--bin-edges",
         default="",

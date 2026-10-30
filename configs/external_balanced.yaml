@@ -37,6 +37,12 @@ paths:
   labeled_fasta: data/processed/external_balanced_proteins.fasta
   label_table: data/processed/external_balanced_label_table.csv
   clusters: data/processed/external_balanced_clusters.tsv
+  splits_dir: data/splits/external_balanced
+  # Written by 09_screen_broad.py. This corpus became trainable on
+  # 2026-10-30, and the difference between labeled_fasta and this file is
+  # exactly the Cas9 contamination that would void the stage B leakage
+  # gate if a checkpoint trained here ever initialized stage B.
+  screened_sequences: data/processed/external_balanced_proteins_screened.fasta
 
 # What --download fetches. Reviewed (Swiss-Prot) only: curation is what makes
 # this a different slice from stage A's, which takes unreviewed entries too
@@ -88,3 +94,38 @@ cluster:
   coverage: 0.80
   cov_mode: 0
   cluster_mode: 0
+
+# Splitting. Added 2026-10-30, when this corpus stopped being measurement-only
+# and became the second corpus for the measured-gain experiment. Same 90/5/5
+# and the same cluster-disjoint rule as stage A, so Gate 2's held-out number
+# means the same thing on both. The holdout machinery is Cas9's and is off
+# here: there is no subfamily to hold out and no positive control.
+split:
+  fractions: {train: 0.90, val: 0.05, test: 0.05}
+  holdout_subfamily: null
+  holdout_positive_controls: false
+  positive_controls: []
+
+# Cas9 screen, identical thresholds to configs/pretrain.yaml. Required because
+# this corpus is now trained on, not only counted: without it a held-out Cas9
+# homolog could reach pre-training and the stage B leakage gate -- which only
+# compares the Cas9 corpus against itself -- would pass while every downstream
+# number measured memorization.
+exclude_cas9:
+  enabled: true
+  name_patterns: [cas9, csn1, csx12, "crispr-associated endonuclease"]
+  pfam_profiles: [PF22702, PF18541, PF13395, PF01844, PF16592, PF16593, PF16595, PF21069, PF22385]
+  max_identity_to_heldout: 0.30
+  alignment_coverage: 0.50
+  fail_on_violation: true
+
+# Stage A gate, scaled to this corpus. pretrain.yaml requires 20,000 sequences
+# and 200 clusters per bin; this corpus is a tenth of stage A's residue mass by
+# construction (balancing 190 thermophilic species against the mesophilic side
+# is what Swiss-Prot's thermophilic coverage allows), so the sequence floor
+# would fail on a corpus that is deliberately small rather than deficient. The
+# cluster floor is kept: it is the one that bears on whether the token can
+# carry signal, and this corpus clears it by 60x.
+gate:
+  min_clusters_per_bin: 200
+  min_sequences_per_bin: 10000

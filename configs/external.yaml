@@ -16,7 +16,7 @@
 # WHAT IS INDEPENDENT, AND WHAT IS NOT. Independent: the sequence set
 # (UniProtKB reviewed bacteria and archaea in full, no species selection and
 # no per-species cap, against our curated-and-capped sample of Gosha-selected
-# species), the label resolution (95 distinct temperatures against 47), and
+# species), the label resolution (77 distinct temperatures against 47), and
 # the organism set. Not independent: both OGT tables scrape overlapping
 # culture-collection catalogues, so agreement is evidence about corpora, not
 # about growth-temperature measurement. See thermocas/data/engqvist.py.
@@ -34,6 +34,7 @@ paths:
   labeled_fasta: data/processed/external_proteins.fasta
   label_table: data/processed/external_label_table.csv
   clusters: data/processed/external_clusters.tsv
+  splits_dir: data/splits/external
 
 # What --download fetches. Reviewed (Swiss-Prot) only: curation is what makes
 # this a different slice from stage A's, which takes unreviewed entries too
@@ -84,3 +85,13 @@ cluster:
   coverage: 0.80
   cov_mode: 0
   cluster_mode: 0
+
+# Splitting. Present for symmetry with configs/external_balanced.yaml so the
+# two corpora carry the same columns; this one is not trained on -- the
+# measured-gain experiment uses the design-matched corpus, because that is the
+# one whose ceiling curve matches stage A's.
+split:
+  fractions: {train: 0.90, val: 0.05, test: 0.05}
+  holdout_subfamily: null
+  holdout_positive_controls: false
+  positive_controls: []

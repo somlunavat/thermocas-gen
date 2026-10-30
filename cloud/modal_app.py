@@ -134,6 +134,16 @@ STAGE_B_CORPUS = (
     "data/processed/cas9_labeled.fasta",
     "data/processed/label_table.csv",
 )
+# The cross-corpus experiment's stage A corpus (configs/external_balanced.yaml):
+# a different growth-temperature database and a different sequence set, screened
+# for Cas9 by the same 09_screen_broad.py pass as the primary one. Keyed by
+# config name because that is what ``11_train.py --corpus`` takes.
+EXTRA_CORPORA = {
+    "external_balanced": (
+        "data/processed/external_balanced_proteins_screened.fasta",
+        "data/processed/external_balanced_label_table.csv",
+    ),
+}
 
 # Directories that live on the volume rather than in the repository copy.
 # Everything large, everything written, and nothing git tracks.
@@ -365,7 +375,7 @@ def check(gpu: str = DEFAULT_GPU):
 
 
 @app.local_entrypoint()
-def upload(stage: str = "a"):
+def upload(stage: str = "a", corpus: str = ""):
     """Push the corpus to the volume from the local files training reads.
 
     Idempotent and worth repeating: re-running after the corpus is rebuilt is
@@ -374,7 +384,15 @@ def upload(stage: str = "a"):
     """
     import os
 
-    paths = STAGE_A_CORPUS if stage == "a" else STAGE_B_CORPUS
+    if corpus:
+        if corpus not in EXTRA_CORPORA:
+            raise SystemExit(
+                f"no corpus named {corpus!r}; known: "
+                + ", ".join(sorted(EXTRA_CORPORA))
+            )
+        paths = EXTRA_CORPORA[corpus]
+    else:
+        paths = STAGE_A_CORPUS if stage == "a" else STAGE_B_CORPUS
     missing = [path for path in paths if not os.path.exists(path)]
     if missing:
         raise SystemExit(

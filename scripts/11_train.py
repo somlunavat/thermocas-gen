@@ -404,6 +404,17 @@ def main() -> int:
              "the configured one belongs to the configured bins.",
     )
     parser.add_argument(
+        "--corpus",
+        default=None,
+        help="config name for the stage A corpus, overriding 'pretrain'. For "
+             "the cross-corpus experiment: --corpus external_balanced trains "
+             "the same model on a corpus built from a different growth-"
+             "temperature database and a different sequence set. The config "
+             "must carry paths/screened_sequences and a splits_dir, because "
+             "an unscreened corpus would void the stage B leakage gate. "
+             "Stage B is always configs/data.yaml and rejects this flag.",
+    )
+    parser.add_argument(
         "--gate2-limit",
         type=int,
         default=None,
@@ -412,7 +423,15 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    stage_cfg = Config.load("pretrain" if args.stage == "a" else "data")
+    if args.corpus and args.stage != "a":
+        print("--corpus applies to stage A only; stage B is configs/data.yaml.",
+              file=sys.stderr)
+        return 2
+    # The corpus name is carried rather than recomputed, because it also
+    # labels the ceiling Gate 2 is judged against and the two must not be able
+    # to disagree.
+    stage_corpus = (args.corpus or "pretrain") if args.stage == "a" else "data"
+    stage_cfg = Config.load(stage_corpus)
     data_cfg = Config.load("train")
     model_cfg = Config.load("model")
     if args.bin_edges:
@@ -460,6 +479,7 @@ def main() -> int:
         spec.accelerator, str(data_cfg["data/num_workers"])
     )
     print(f"stage:     {args.stage.upper()}")
+    print(f"corpus:    configs/{stage_corpus}.yaml")
     print(f"model:     {args.model} ({checkpoint})")
     print(f"device:    {spec.accelerator} / {spec.precision}")
     for note in (*spec.notes, *worker_notes):
@@ -516,8 +536,7 @@ def main() -> int:
         # check below passes for the bins actually being trained on. The name
         # records the variant rather than the config file, so a run's own
         # output says which ceiling judged it.
-        corpus_name = "pretrain" if args.stage == "a" else "data"
-        label = f"{corpus_name}@{args.bin_edges}" if args.bin_edges else corpus_name
+        label = f"{stage_corpus}@{args.bin_edges}" if args.bin_edges else stage_corpus
         try:
             gate2 = dataclasses.replace(
                 gate2, ceiling_gain=args.ceiling_gain, ceiling_corpus=label
@@ -537,7 +556,7 @@ def main() -> int:
         gate2.check_corpus(
             gate2.ceiling_corpus
             if args.ceiling_gain is not None
-            else ("pretrain" if args.stage == "a" else "data")
+            else stage_corpus
         )
     except ValueError as exc:
         print(f"\n{exc}", file=sys.stderr)
