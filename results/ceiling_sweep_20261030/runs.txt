@@ -1,13 +1,37 @@
-Threshold sweep, batch 2. Launched 2026-10-30.
-Stage A corpus (configs/pretrain.yaml), 3,000 steps, A10G, Gate 2 on 2,000
-held-out sequences -- identical settings to the 2026-10-28 batch, so the eight
-thresholds are comparable. Ceilings are corpus-wide, from
-results/ceiling_sweep_20261027/sweep.txt.
+Threshold sweep batches 2-4. Launched 2026-10-30 and 2026-10-31.
+All runs: 3,000 steps, A10G, Gate 2 on 2,000 held-out sequences -- identical
+settings to the 2026-10-28 batch, so every run here is comparable to it.
+--ceiling-gain is the corpus-wide figure and sets only the denominator printed
+in that run's own Gate 2 report; it does not touch training.
 
-run          edge  ceiling    call id
-sweep_t35      35  0.00198    fc-01M67JX6JQW9HKHJYK67Q52ZZ9
-sweep_t50      50  0.00190    fc-01M67JX79YZ52MRBEVN2TCS1AA
-sweep_t65      65  0.00184    fc-01M67JX81TZMHK0MB2V529D626
-sweep_t70      70  0.00161    fc-01M67JX8RQHXBANVJKEGRJTJ6T
+Batch 2: four more stage A thresholds (configs/pretrain.yaml). FINISHED.
+  run          edge  ceiling    call id
+  sweep_t35      35  0.00198    fc-01M67JX6JQW9HKHJYK67Q52ZZ9
+  sweep_t50      50  0.00190    fc-01M67JX79YZ52MRBEVN2TCS1AA
+  sweep_t65      65  0.00184    fc-01M67JX81TZMHK0MB2V529D626
+  sweep_t70      70  0.00161    fc-01M67JX8RQHXBANVJKEGRJTJ6T
+  With the 2026-10-28 batch (t30, t45, t55, t75) this gives n=8 thresholds.
+  Result: see measured_n8.md. All four passed Gate 2.
 
-With the 2026-10-28 batch (t30, t45, t55, t75) this gives n=8 thresholds.
+Batch 3: the design-matched external corpus (configs/external_balanced.yaml),
+screened for Cas9 and split on 2026-10-30. Edges chosen to span the
+within-cluster ceiling's range while matching four of stage A's thresholds, so
+the two corpora can be compared threshold by threshold.
+  run        edge  ceiling    call id
+  ext_t30      30  0.00105    fc-01M6A1107CPVB3EVA9KT7ZE96W
+  ext_t40      40  0.00274    fc-01M6A111351EYP81W6Y23ATPG9
+  ext_t55      55  0.00322    fc-01M6A111VSRVXD8WVP61ERXTKQ
+  ext_t65      65  0.00313    fc-01M6A112MKZX2WJ9A23XEEN0C1
+  ext_t75      75  0.00203    fc-01M6A113CRM0ZC863SDM4HC0PX
+
+Batch 4: second backbone (conditioned_lm_small = progen2-small), stage A
+corpus, three thresholds matching batch 1's.
+  run          edge  ceiling    call id
+  small_t30      30  0.00095    fc-01M6A128B6XSC36KH7TVKCCMNH
+  small_t55      55  0.00257    fc-01M6A1291S892R0GJT4SB5NYSN
+  small_t75      75  0.00118    fc-01M6A129RW9ZV05XWWAFAYTDWV
+
+A first attempt at batch 4 was launched without --model and so ran the primary
+backbone, duplicating runs that already existed. Cancelled within a minute,
+before any checkpoint was written; cloud/launch.py now carries the --model flag
+it was missing.

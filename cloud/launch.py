@@ -62,6 +62,8 @@ def train(args) -> int:
     # adding a parameter to the remote function means redeploying before any
     # of them can be used.
     extra: list[str] = []
+    if args.model:
+        extra += ["--model", args.model]
     if args.corpus:
         extra += ["--corpus", args.corpus]
     if args.bin_edges:
@@ -141,6 +143,14 @@ def main() -> int:
     run.add_argument("--batch-size", type=int, default=0)
     run.add_argument("--run-name", default="default")
     run.add_argument("--resume", action="store_true")
+    run.add_argument(
+        "--model",
+        default="",
+        help="model section in configs/model.yaml, overriding its 'active'. "
+             "conditioned_lm_small is the second backbone for the "
+             "cross-backbone check. Omitting this silently runs the primary "
+             "model, which looks like a successful run and duplicates one.",
+    )
     run.add_argument(
         "--corpus",
         default="",
