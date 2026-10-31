@@ -1891,3 +1891,73 @@ statistic, three runs on a second backbone (~$9). Prerequisites that need no
 GPU: the external corpora have `cluster_id` filled and `split` empty, and they
 are unscreened for Cas9, so a checkpoint trained on them could not initialize
 stage B.
+
+## 2026-10-31 — Four more thresholds, and the headline correlation does not survive them
+
+Batch 2 of the sweep: 35, 50, 65 and 70 C on the stage A corpus, identical
+settings to the 2026-10-28 four, so n=8 thresholds. All four passed Gate 2
+with z between 8.3 and 19.1. Reports in
+`results/ceiling_sweep_20261030/runs/`, analysis in `measured_n8.md`.
+
+**The corpus-wide ceiling's rank correlation with measured gain falls from
++0.80 to +0.38, exact permutation p = 0.18.** Dropping the four new runs
+reproduces +0.800 exactly, so this is not a computation error -- it is what
+doubling n did to a coefficient that `measured.md` already said was not
+significant at n=4. The earlier number was a property of which four thresholds
+had been run.
+
+**The within-cluster ceiling does survive: +0.714 val (p = 0.029), +0.743 test
+(p = 0.021), Pearson +0.907.** This matters because within-cluster was not
+picked after seeing the data -- it is what `conditioning_gate/ceiling_gain` has
+been configured on since 2026-10-26, and `13_conditioning_ceiling.py` already
+describes it as the token's value given the family. Corpus-wide was used for
+the sweep comparisons because it has no cluster-count caveat, and that choice
+was the error.
+
+**The failure is interpretable, and it is the balance objection landing.** The
+largest miss is 35 C: seventh of eight by corpus-wide ceiling, second by
+measured gain, and the most class-balanced threshold in the corpus
+(H = 0.679 of 0.693). The hot side at 35 C is mostly 37 C mesophiles, so the
+residue histogram sees a difference the model cannot use. `findings.md` Result
+4 argued the objection fails because the peak sits above the most balanced
+threshold; that is still true and was not the whole story, because the
+objection does not need to move the peak, only to inflate the ceiling where the
+classes happen to be even. Conditioning on family removes most of it.
+
+**A baseline that reads nothing from the corpus beats both.**
+`-abs(edge - 55)` scores +0.843. The defence -- that its constant was chosen
+knowing the answer, and that `findings.md` Result 2 shows the optimum moves to
+35 C on the uncapped external corpus -- is reasonable and is not yet evidence.
+This is now the most important open question here, and the five external-corpus
+runs launched today are the test: the within-cluster ceiling ranks 65 C highest
+there while the fixed-centre baseline ranks 55 C, so five runs can separate
+them.
+
+**The actionable claim shrinks.** Measured optimum is 50 C at +0.296% against
+45 C at +0.260%: 1.14x, about 2 sigma, with 65 C within noise of both. Gain is
+a plateau from 45 to 65 C (+0.255% to +0.296%) and falls outside it to +0.070%
+averaged over 30 and 35 C. So the ceiling-derived "1.3-1.7x from retuning the
+threshold" is wrong and is struck from the paper. What replaces it: label
+definition is worth **3.9x** between a cold threshold and the plateau, and the
+45 C convention is already near-optimal. Getting the threshold badly wrong is
+expensive; getting it slightly wrong is not.
+
+**What was done to the draft.** `paper/draft.md` abstract, intro, section 3,
+5.1, 5.4, 6.1, 6.3, the figure spec and the submission checklist rewritten,
+with a revision-history section listing the three claims that must not return.
+Figure 1 becomes two panels, the failing predictor beside the working one.
+
+**Also today.** The design-matched external corpus became training data: Cas9
+screen (11 of 35,361 removed, ceilings unchanged to 0.001 pp), cluster-disjoint
+splits with both classes in both held-out sets, and a `--corpus` override in
+`11_train.py` whose argument also labels the ceiling Gate 2 is judged against
+so the two cannot disagree. A second backbone was added
+(`conditioned_lm_small`, progen2-small): same family, tokenizer, conditioning
+and LoRA settings, a fifth of the parameters, 1,024-token context. The
+dataset's token budget is now the smaller of the configured length and the
+backbone's context, which drops 46 of 311,987 stage A sequences and reports
+them rather than handing the model positions it cannot index -- an invariant
+rather than a flag, because a flag at launch is forgettable. `launch.py` also
+gained the `--model` flag it was missing: the first attempt at the backbone
+batch silently ran the primary model and duplicated three existing runs, and
+was cancelled within a minute before any checkpoint was written.
