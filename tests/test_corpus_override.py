@@ -131,3 +131,46 @@ class TestSplitsAreMeasurable:
         for split in ("val", "test"):
             for bin_name, n in sorted(counts[split].items()):
                 assert n >= 200, f"{name} {split} has only {n} {bin_name}"
+
+
+class TestSecondBackbone:
+    """conditioned_lm_small is the cross-backbone check. It has a 1,024-token
+    context, which is the configuration that shipped the prior repository's
+    central bug, so the guards that keep it to stage A are asserted here."""
+
+    def test_it_is_a_different_checkpoint(self):
+        model = Config.load("model")
+        assert (
+            model["conditioned_lm_small/checkpoint"]
+            != model["conditioned_lm/checkpoint"]
+        )
+
+    def test_it_conditions_the_same_way_as_the_primary_model(self):
+        """A backbone comparison has to vary the backbone and nothing else.
+        If the conditioning differed, the comparison would measure that."""
+        model = Config.load("model")
+        for key in ("use_growth_temp_token", "growth_temp_token_dropout",
+                    "lora/r", "lora/alpha", "lora/dropout", "ogt_head/enabled"):
+            assert (
+                model[f"conditioned_lm_small/{key}"]
+                == model[f"conditioned_lm/{key}"]
+            ), key
+
+    def test_it_cannot_hold_a_full_length_cas9(self):
+        """Not a defect -- it is why this backbone is stage A only. Recorded
+        so that nobody promotes it to stage B on the grounds that it trained
+        fine on stage A, where sequences cap at 1,024 residues."""
+        model = Config.load("model")
+        data = Config.load("data")
+        longest_cas9 = int(data["filter/max_length"]) + 3
+        assert int(model["conditioned_lm_small/required_context"]) < longest_cas9
+
+    def test_the_token_budget_cap_binds_for_it_and_not_for_the_primary(self):
+        """The dataset budget is min(configured, this backbone's context).
+        If the cap did not bind, over-long sequences would reach a model that
+        cannot index them; if it bound for the primary model, every run so far
+        would have been silently truncated."""
+        model = Config.load("model")
+        configured = int(Config.load("train")["data/max_length"])
+        assert int(model["conditioned_lm_small/required_context"]) < configured
+        assert int(model["conditioned_lm/required_context"]) >= configured

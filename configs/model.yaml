@@ -94,3 +94,36 @@ composition_baseline:
   features: [aa_frequency, charge_fraction, ivywrel]
   estimator: ridge
   alpha: 1.0
+
+# Second backbone for the cross-backbone check (added 2026-10-31). Same family
+# and tokenizer as conditioned_lm, a fifth of the parameters, and a 1,024-token
+# context instead of 2,048.
+#
+# WHAT THIS DOES AND DOES NOT TEST. It tests whether the threshold result is
+# an artifact of one model's capacity. It does NOT test architecture
+# independence -- same family, same tokenizer, same training code -- and no
+# claim beyond capacity may rest on it.
+#
+# STAGE A ONLY. 1,024 positions cannot hold a full-length Cas9 (SpCas9 is
+# 1,368 aa), which is the bug the prior repository shipped. It is kept out of
+# the Cas9-capable pair that tests/test_config.py pins, and
+# assert_context_fits refuses it for any stage whose sequences need more. The
+# dataset's token budget is capped at this value, so the 9 sequences in 35,350
+# that exceed it are dropped and reported rather than overflowing.
+conditioned_lm_small:
+  kind: pretrained_lm
+  checkpoint: hugohrban/progen2-small   # 151M params, n_positions=1024
+  required_context: 1024
+  use_growth_temp_token: true
+  gradient_checkpointing: true
+  growth_temp_token_dropout: 0.10
+  ogt_head:
+    enabled: true
+    hidden: 256
+    dropout: 0.1
+  lora:
+    enabled: true
+    r: 16
+    alpha: 32
+    dropout: 0.05
+    target_modules: [qkv_proj, out_proj]

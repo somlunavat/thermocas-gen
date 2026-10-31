@@ -163,13 +163,26 @@ def build_datasets(
         counts = rebin_labels(labels, binner)
         shown = ", ".join(f"{k}={v:,}" for k, v in sorted(counts.items()))
         print(f"rebinned:  {shown}")
+    # The token budget is the smaller of what training configures and what
+    # this backbone's context can hold. Stage A's primary model has 2,048
+    # positions and the cap never binds; a shorter-context backbone -- the
+    # second one in the cross-backbone comparison has 1,024 -- would otherwise
+    # be handed sequences it cannot index. on_too_long is drop_and_report, so
+    # the few that exceed it are dropped and counted rather than truncated
+    # silently or crashed on.
+    budget = min(
+        int(data_cfg["data/max_length"]),
+        int(model_cfg[f"{model_name}/required_context"]),
+    )
+    if budget < int(data_cfg["data/max_length"]):
+        print(f"tokens:    {budget} (capped by {model_name}/required_context)")
     datasets = {}
     for split in split_names:
         datasets[split] = ConditionedProteinDataset(
             sequences,
             labels,
             tokenizer,
-            max_length=int(data_cfg["data/max_length"]),
+            max_length=budget,
             split=split,
             on_too_long=str(data_cfg["data/on_too_long"]),
             growth_temp_token_dropout=(
