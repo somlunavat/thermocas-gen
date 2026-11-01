@@ -28,7 +28,8 @@ compared against each other or against nothing at all: the field has no
 reference scale for how much a growth-temperature label can help on a given
 corpus. We ask whether a cheap corpus statistic can supply one. Across eight
 GPU runs that differ only in how the label is defined -- identical sequences,
-clusters and splits -- we find that how a growth-temperature label is binned is
+clusters and splits -- and five more on a second corpus and three on a second
+backbone, we find that how a growth-temperature label is binned is
 worth a factor of 3.9 in measured conditioning gain, from +0.070% at cold
 thresholds to +0.273% on a plateau between 45 and 65 degrees C, with margins an
 order of magnitude above the shuffle noise floor. Mutual information between
@@ -42,12 +43,15 @@ error is at the most class-balanced threshold, where the residue histogram sees
 a difference that the model cannot use. We also report two negative results.
 The statistic does not rank label definitions that differ in granularity rather
 than threshold, and normalizing by label entropy makes that worse rather than
-better. And on this corpus neither form beats a baseline that reads nothing
-from the corpus at all -- distance from the middle of the temperature range --
-so a corpus statistic earns its cost only where the optimum moves, which we
-test on a second corpus whose optimum does move. Finally, a worked negative case
-shows two corpus gates correctly ruling out a Cas9 conditioning experiment
-before any GPU time is spent.
+better. And neither form beats a baseline that reads nothing from the corpus at
+all -- distance from the middle of the temperature range -- on either of the two
+corpora we train on, whose measured optima are 50 and 65 degrees C and so are
+both close to that middle. The plateau itself is robust: it reproduces on a
+second corpus built from a different growth-temperature database and a different
+sequence source, and the ordering of thresholds reproduces on a second backbone
+an order of magnitude smaller. Finally, a worked negative case shows two corpus
+gates correctly ruling out a Cas9 conditioning experiment before any GPU time
+is spent.
 
 Word count target for submission: ~200. The draft above is ~290. The two
 negative results compress; the p-values and the 3.9x do not.
@@ -182,7 +186,11 @@ byte-identical sequences, clusters and splits. Only the meaning of the control
 token changes. Nothing in the related work isolates label definition this way;
 comparisons there confound it with corpus composition.
 
-Setup: ProGen2-base with LoRA, stage A, 3,000 steps, A10. Conditioning is
+Setup: ProGen2-base with LoRA, stage A, 3,000 steps, A10. Thirteen runs in
+all: eight thresholds on stage A (section 5.1), five on a second corpus
+(5.2b) and three on a second backbone (5.2c), with 30, 55 and 75 degrees C
+shared between the first and third so they are directly comparable.
+Conditioning is
 measured as the relative perplexity improvement from the correct control token
 over shuffled ones, five shuffles per run, on 2,000 held-out sequences and
 again on a cluster-disjoint test split.
@@ -191,6 +199,13 @@ Corpus (stage A): 311,987 sequences, 113.8M residues, 47 distinct growth
 temperature values, 1,552 both-class clusters at the 45 degrees C threshold,
 279,980 training sequences. Growth temperatures from Gosha; sequences from
 UniProt, species-selected and capped at 500 per species.
+
+Second corpus: the design-matched external corpus of section 5.2, screened for
+Cas9 homology (11 of 35,361 sequences removed) and split cluster-disjoint at
+90/5/5, giving train 31,968 / val 1,687 / test 1,695 with both classes present
+in both held-out splits. Both corpora are clustered at the same identity and
+coverage thresholds, which is what makes the within-cluster column comparable
+between them.
 
 Budget note that belongs in this section: `sweep_t45` reproduces the configured
 binning and reaches +0.260% at 3,000 steps against a 20,000-step baseline's
@@ -266,8 +281,13 @@ that in the results rather than in the limitations.
 The defence is that the baseline's constant was chosen knowing the answer, and
 nothing computed from a new corpus tells you where to centre it -- while
 section 5.3 shows the optimum is *not* always near 55. A corpus statistic should
-win exactly where the optimum moves. Section 5.2b is that test; until it
-reports, this is an open problem and not a resolved one.
+win exactly where the optimum moves. Section 5.2b was pre-registered as that
+test and came back inconclusive: the second corpus's measured optimum moved to
+65 degrees C, which is not far enough from 55 to put the baseline at risk. So
+this stands as an open problem, and the sentence the paper has to carry is that
+no statistic tested here beats a rule of thumb at *ranking* label definitions.
+The corpus statistics do beat it at predicting the *size* of the gain
+(section 5.2b), which is a weaker and less useful claim.
 
 ### 5.2 The curve shape transfers to a corpus we did not build
 
@@ -300,28 +320,106 @@ organisms give the same curve shape.
 
 ### 5.2b Measured gain on the second corpus
 
-PENDING: five runs on the design-matched external corpus at 30, 40, 55, 65 and
-75 degrees C, launched 2026-10-31, call ids in
-`results/ceiling_sweep_20261030/runs.txt`. Edges were chosen to span the
-within-cluster statistic's range on that corpus while matching four of stage
-A's thresholds.
+Five runs on the design-matched external corpus at 30, 40, 55, 65 and 75
+degrees C, identical settings to section 5.1. All five passed Gate 2 at z
+between 8.4 and 41.2. Full analysis in
+`results/ceiling_sweep_20261030/external_measured.md`.
 
-This section carries the paper's load-bearing test, so what it has to report is
-fixed in advance here rather than chosen once the numbers are in:
+| edge (C) | thermo% | corpus-wide | within-cluster | val gain | test gain |
+|---|---|---|---|---|---|
+| 30 | 81.7% | +0.105% | +0.125% | +0.110% | +0.108% |
+| 40 | 49.8% | +0.274% | +0.219% | +0.404% | **+0.428%** |
+| 55 | 41.3% | +0.322% | +0.237% | +0.420% | +0.429% |
+| 65 | 27.5% | +0.313% | **+0.272%** | **+0.449%** | +0.424% |
+| 75 | 16.8% | +0.203% | +0.180% | +0.236% | +0.222% |
 
-1. Does the within-cluster statistic predict measured gain on this corpus too?
-   It ranks 65 degrees C highest there; `-abs(edge - 55)` ranks 55 highest.
-   They disagree on the top two and on the ordering of 40 against 75, so five
-   runs can separate them.
-2. Does the fixed-centre baseline degrade on a corpus whose ceiling peaks at
-   60 degrees C rather than 55?
-3. Does the plateau reproduce, and does the cold end stay poor?
+| predictor | rho (val) | p | rho (test) | p | Pearson (val) |
+|---|---|---|---|---|---|
+| corpus-wide ceiling | +0.900 | 0.042 | +0.900 | 0.042 | **+0.984** |
+| within-cluster ceiling | **+1.000** | **0.008** | +0.700 | 0.117 | +0.971 |
+| `-abs(edge - 55)` | +0.900 | 0.042 | +0.900 | 0.042 | +0.830 |
 
-If the statistic loses to the fixed-centre baseline here as well, the honest
-paper is the negative one: label definition matters by 3.9x, and no corpus
-statistic we tested predicts which definition is best better than a rule of
-thumb. That version is worth publishing and the draft should be written so it
-can absorb that outcome without restructuring.
+Exact permutation p over all 120 relabelings. This section was pre-registered
+before the runs landed, with three questions fixed in advance; they are
+answered here in order, including the one that came back against the design.
+
+**The within-cluster statistic predicts measured gain here, and its
+pre-registered prediction was right.** It ranked 65 degrees C highest on this
+corpus, against 50 degrees C measured on stage A, and 65 degrees C is the
+measured validation optimum. Spearman is +1.000 (p = 0.008), the only predictor
+of the three significant at n=5. On test it falls to +0.700: 40, 55 and 65
+degrees C land within 0.005 pp of each other there, against per-run shuffle
+spreads of 0.0004 to 0.0009 pp, so the test ranking is scored on the order
+inside a three-way tie. That disagreement is a statement about n=5, not about
+the statistic.
+
+**The fixed-centre baseline does not degrade, and the test was weaker than it
+was advertised to be.** `-abs(edge - 55)` holds +0.900 on both splits. Two
+reasons, both of which belong in the paper rather than in a footnote. First,
+the pre-registration claimed the two predictors disagree on the ordering of 40
+against 75 as well as on the top; they do not -- both rank 40 above 75, so over
+these five edges the orderings differ by one adjacent swap and five runs could
+separate them by at most one rank unit. Second and more seriously, **the
+optimum did not move far enough**. Stage A's measured optimum is 50 degrees C
+and this corpus's is 65; a baseline centred at 55 is wrong by 5 and 10 degrees
+and is never exposed. The corpus that would expose it is the uncapped external
+corpus of section 5.3, whose ceiling peaks at 35 degrees C, and it has not been
+trained on.
+
+What does separate them here is magnitude, not rank: Pearson +0.984 and +0.971
+for the two corpus statistics against +0.830 for the baseline, which is linear
+in distance from 55 by construction and so cannot reproduce the steep fall at
+30 degrees C beside the shallow one at 65. That is a real difference, and it is
+not the difference this test was built to measure, so it is reported as an
+observation.
+
+**The plateau reproduces, and this is the batch's clearest result.**
+
+| | stage A | external |
+|---|---|---|
+| cold end (30 C) | +0.037% | +0.110% |
+| plateau | +0.255-0.296% (45-65 C) | +0.404-0.449% (40-65 C) |
+| hot end (75 C) | +0.121% | +0.236% |
+| cold-to-plateau | 7.2x | 3.8x |
+
+Two growth-temperature databases, two sequence sources, two curation levels:
+an interior plateau several times the cold end, falling away at both ends.
+Gains are uniformly larger on the external corpus -- 1.6x at 55 degrees C, on a
+tenth of the residues -- and the `thermo%` column says why rather than letting
+it stand as a mystery: at 55 degrees C that corpus is 41.3% thermophilic
+against stage A's 28.0%, because species-balancing a Swiss-Prot subset with
+sparse thermophilic coverage leaves a hotter corpus. Same threshold, different
+class balance, which is section 5.3's confound again.
+
+### 5.2c The threshold ordering reproduces on a second backbone
+
+progen2-small (151M against progen2-base's 764M), stage A corpus, same
+conditioning scheme, LoRA rank and token dropout; the backbone and the 1,024
+token context it forces are the only changes.
+
+| edge (C) | base val | small val | base test | small test |
+|---|---|---|---|---|
+| 30 | +0.037% | +0.035% | +0.033% | +0.077% |
+| 55 | **+0.255%** | **+0.200%** | **+0.238%** | **+0.184%** |
+| 75 | +0.121% | +0.142% | +0.119% | +0.114% |
+
+**55 > 75 > 30 on both backbones and both splits.** The threshold-choice result
+is not a property of progen2-base.
+
+The size of the spread does not transfer as cleanly. Cold-to-plateau is 6.9x on
+base against 5.7x on small by validation, but 7.2x against 2.4x by test,
+because `small_t30` measured +0.035% on validation and +0.077% on test. That
+run is also the batch's only Gate 2 failure: significant at z 7.2, then 0.36x
+of its ceiling against a 0.50x floor, then 0.81x on test. At that size the
+val/test gap stops being noise around a stable quantity, so the cold-end
+magnitude on this backbone is not quotable as a number.
+
+At the plateau the smaller model reaches 0.78x the larger model's gain on both
+splits -- the expected direction, on two points, so a direction and not a slope.
+
+This is a **capacity** comparison and not an architecture-independence result.
+Both models are ProGen2 decoders sharing a tokenizer and a conditioning
+scheme. A second architecture family is untested.
 
 ### 5.3 Sampling design is half the measurement
 
@@ -445,15 +543,23 @@ plateau. Both forms of the statistic get the cold end right.
 ### 6.4 Scope
 
 Prokaryotes only; Engqvist's 7,682 eukaryote rows are excluded, as are the
-299,890 Swiss-Prot entries whose organism is absent from it. One backbone.
-Measured gain is validated on one corpus; section 5.2 validates the bound's
-shape across two, not the gain. The two growth-temperature databases both
+299,890 Swiss-Prot entries whose organism is absent from it. Two backbones,
+both ProGen2 decoders with the same tokenizer and conditioning scheme, so
+section 5.2c is a capacity comparison and not an architecture-independence
+result. Measured gain is validated on two corpora (5.2b), both of which were
+assembled by the same species-balancing and per-species capping design; the
+uncapped corpus of 5.3, which is the one whose optimum sits elsewhere, has not
+been trained on. The two growth-temperature databases both
 scrape overlapping culture-collection catalogues (DSMZ, ATCC, JCM), so their
 agreement is evidence the bound is not an artifact of one *corpus* and not
 evidence that it survives an independent *measurement* of growth temperature.
-The design-matched external corpus is a tenth of stage A's residue mass. Its
-within-cluster figures at 75 and 80 degrees C rest on 72 and 59 clusters, so
-every comparison above uses the corpus-wide column.
+The design-matched external corpus is a tenth of stage A's residue mass and
+hotter at matched thresholds (41.3% thermophilic at 55 degrees C against stage
+A's 28.0%), so its larger measured gains are not evidence that a smaller corpus
+conditions better. Its within-cluster figures at 75 and 80 degrees C rest on 72
+and 59 clusters; the within-cluster column is used for the 30-65 degrees C
+comparisons in 5.2b, where cluster counts are 125 to 156, and the corpus-wide
+column elsewhere.
 
 ## 7. A worked negative case: Cas9
 
@@ -509,8 +615,9 @@ Two, both computable from committed results with no new runs.
 
 **Figure 1** -- two panels side by side, same axes: corpus-wide statistic (x)
 against measured gain (y), and within-cluster against measured gain. Eight
-points each, error bars from the shuffle spread, rho and the exact p printed in
-each panel. This is the figure that carries 5.1b, and putting the failing
+stage A points each, with the five external-corpus points overplotted in a
+second marker so both corpora are visible on one scale, error bars from the
+shuffle spread, rho and the exact p printed in each panel. This is the figure that carries 5.1b, and putting the failing
 predictor beside the working one is the whole point -- a reader should be able
 to see that the left panel is a cloud and the right is a line. Mark 35 degrees
 C in both: it is the point that moves most between them and the mechanism in
@@ -522,8 +629,11 @@ marked. A second row, or a twin axis, shows the `thermo%` column so the 37
 degrees C cliff is visible where the natural corpus's peak sits. Carries 5.2,
 5.3 and 5.4.
 
-Figure 3, if a third is affordable: the sweep's four granularity settings
-against measured gain, making 6.2 visual. Lower priority than the first two.
+Figure 3, if a third is affordable: measured gain against threshold for the
+three trained configurations -- stage A on progen2-base, the external corpus,
+and stage A on progen2-small -- on one panel, which is the plateau result of
+5.2b and 5.2c in one picture and the most quotable thing in the paper. The
+granularity figure for 6.2 is below it in priority.
 
 ## Citations to collect
 
@@ -556,30 +666,28 @@ no independent replication was found; cite them as reported.
 
 ## What is missing before submission
 
-Status 2026-10-31. Threshold resolution is done: n=8, and it changed the
-result. Two batches are in flight, call ids in
-`results/ceiling_sweep_20261030/runs.txt`:
+Status 2026-10-31, after all thirteen runs. **No experiment in the plan is
+outstanding, and no further GPU time is needed for the paper as scoped.** What
+is left is writing and two figures, neither of which needs compute:
 
-- **Five runs on the design-matched external corpus.** Section 5.2b. This is
-  now the load-bearing experiment rather than a nice-to-have, because it is the
-  only thing that can separate the within-cluster statistic from the
-  fixed-centre baseline.
-- **Three runs on progen2-small**, at 30, 55 and 75 degrees C. Tests whether
-  the 3.9x spread is capacity-dependent. Same family and tokenizer, so it does
-  not test architecture independence and section 6.4 must say so.
-
-Prerequisites, done 2026-10-30: the external corpora now have cluster-disjoint
-splits with both classes in both held-out sets, and the design-matched one has
-been screened for Cas9 (11 of 35,361 sequences removed, ceilings unchanged to
-0.001 pp).
+- **Prose for sections 1-4 and 7-8.** These are still skeletons.
+- **Figures 1 and 2**, both computable from committed results.
+- **A decision on the open problem of 5.1c.** One experiment would settle it:
+  three or four runs on the *uncapped* external corpus, spanning 30 to 60
+  degrees C, where the within-cluster statistic and `-abs(edge - 55)` genuinely
+  disagree about which threshold is best -- unlike the design-matched corpus,
+  where it turned out they barely disagree at all. Roughly $9-12 of A10 time
+  plus a Cas9 screen and a split assignment, both CPU-only. Either run it or
+  state the limitation and submit; do not restate the pre-registered test of
+  5.2b as though it had resolved this.
 
 Spend so far is about $35 of A10 time against the $31 estimated, the difference
-being that eight runs at 2.6 h each cost more than the round numbers suggested.
+being that the runs at 2.6 h each cost more than the round numbers suggested.
 
-**After these eight, stop and write.** The one experiment that would be worth
-designing afterwards is a third corpus with a genuinely independent
-growth-temperature measurement rather than another culture-collection scrape,
-and it is not reachable on this budget. Note it as future work and submit.
+The experiment that would be worth designing beyond that is a third corpus with
+a genuinely independent growth-temperature measurement rather than another
+culture-collection scrape, and a second architecture family for 5.2c. Neither
+is reachable on this budget. Note both as future work.
 
 ## Revision history
 
@@ -602,3 +710,24 @@ sampling-design result, the granularity failure, and the Cas9 negative case.
 
 The full analysis, including the exact permutation tests and the diagnosis of
 the 35 C miss, is in `results/ceiling_sweep_20261030/measured_n8.md`.
+
+**2026-10-31, after the external-corpus and backbone runs.** Sections 5.2b and
+5.2c written, 5.1c and the abstract amended, the submission checklist closed
+out. The pre-registered test of section 5.2b **did not pass**: the
+within-cluster statistic predicted the second corpus's measured optimum
+correctly (rho +1.000 on validation, p = 0.008) but the fixed-centre baseline
+did not degrade, because the two corpora's measured optima are 50 and 65
+degrees C and both sit within 10 degrees of the baseline's constant. Two
+further claims must not appear:
+
+- "a corpus statistic beats a fixed-centre rule of thumb at ranking label
+  definitions" -- untested on any corpus where the two disagree substantially
+- "the cold-to-plateau spread is backbone-independent in size" -- the ordering
+  reproduces on progen2-small, the magnitude does not, and the cold-end run is
+  the batch's one Gate 2 failure
+
+What the batch added: the interior plateau reproduces on a second corpus and a
+second backbone, and the corpus statistics beat the baseline on magnitude
+(Pearson +0.98 and +0.97 against +0.83) if not on rank.
+
+Analysis in `results/ceiling_sweep_20261030/external_measured.md`.

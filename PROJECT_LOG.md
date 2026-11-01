@@ -1961,3 +1961,56 @@ rather than a flag, because a flag at launch is forgettable. `launch.py` also
 gained the `--model` flag it was missing: the first attempt at the backbone
 batch silently ran the primary model and duplicated three existing runs, and
 was cancelled within a minute before any checkpoint was written.
+
+## 2026-10-31 — The second corpus and the second backbone, and the test that did not settle it
+
+All eight remaining runs finished. Five on the design-matched external corpus
+(30, 40, 55, 65, 75 C) and three on progen2-small over stage A (30, 55, 75 C).
+Thirteen runs in total now underpin the paper, and no further GPU time is
+needed for it as scoped.
+
+The pre-registered test of `paper/draft.md` §5.2b had three questions and gave
+three different kinds of answer.
+
+The within-cluster statistic predicted the second corpus's measured optimum
+correctly. It ranked 65 C highest there, against 50 C measured on stage A, and
+65 C is the measured validation optimum: Spearman +1.000, exact p = 0.008, the
+only one of the three predictors significant at n=5. On the test split it drops
+to +0.700, because 40, 55 and 65 C land within 0.005 pp of each other against
+per-run shuffle spreads of 0.0004–0.0009 pp. Three tied points out of five is
+not a ranking.
+
+`-abs(edge - 55)` did not degrade. It holds +0.900 on both splits. Two reasons,
+and the first is mine: the pre-registration claimed the two predictors disagree
+on the ordering of 40 against 75 as well as on the top, and they do not — over
+these five edges they differ by a single adjacent swap, so the design could
+separate them by at most one rank unit. I should have checked that before
+spending the GPU time rather than after. The second reason is worse for the
+project: the optimum did not move far enough. Stage A measures 50 C and this
+corpus 65 C, so a baseline centred at 55 is wrong by 5 and 10 degrees and is
+never exposed. The corpus that would expose it is the uncapped external one,
+whose ceiling peaks at 35 C, and it has not been trained on.
+
+What the corpus statistics do win on is magnitude: Pearson +0.984 and +0.971
+against the baseline's +0.830, which is linear in distance from 55 by
+construction and so cannot have both the steep fall at 30 C and the shallow one
+at 65 C. Real, but weaker than the claim the test was designed to support, and
+recorded as an observation.
+
+The robust finding got more robust. The interior plateau reproduces on the
+second corpus (+0.404% to +0.449% from 40 to 65 C, against +0.110% at 30 C) and
+the threshold ordering 55 > 75 > 30 reproduces on progen2-small on both splits.
+The plateau's *size* does not transfer across backbones: `small_t30` measured
++0.035% on validation and +0.077% on test and is the batch's one Gate 2 failure
+(significant at z 7.2, then 0.36x of its ceiling against a 0.50x floor), so the
+cold-end magnitude on that backbone is not quotable. At the plateau the smaller
+model reaches 0.78x the larger's gain on both splits, which is the expected
+direction on two points.
+
+External gains are uniformly larger — +0.420% against +0.255% at 55 C, on a
+tenth of the residues — and the reason is in the class masses rather than the
+corpus size: that corpus is 41.3% thermophilic at 55 C against stage A's 28.0%.
+Same confound as §5.3, and §6.4 now says so.
+
+Analysis in `results/ceiling_sweep_20261030/external_measured.md`. Spend is
+about $35 of A10 time against the $31 estimated.

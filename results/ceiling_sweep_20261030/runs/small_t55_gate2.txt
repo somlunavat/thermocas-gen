@@ -1,0 +1,16 @@
+perplexity with the correct growth-temperature token: 4.7431
+perplexity with shuffled tokens: 4.7526 (mean of 5)
+  individual shuffles: 4.7527, 4.7524, 4.7526, 4.7528, 4.7526
+relative gain: +0.200%
+
+is the effect real?
+  beats every shuffle   True
+  z vs shuffle spread   72.1  (required 3.0; spread 0.000132)
+  -> SIGNIFICANT
+
+is the effect large, given what the corpus allows?
+  corpus ceiling        +0.257% (scripts/13_conditioning_ceiling.py)
+  gain / ceiling        0.78x  (required 0.50x)
+  -> LARGE ENOUGH
+
+GATE 2 PASSED

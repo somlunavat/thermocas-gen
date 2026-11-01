@@ -13,7 +13,7 @@ Batch 2: four more stage A thresholds (configs/pretrain.yaml). FINISHED.
   With the 2026-10-28 batch (t30, t45, t55, t75) this gives n=8 thresholds.
   Result: see measured_n8.md. All four passed Gate 2.
 
-Batch 3: the design-matched external corpus (configs/external_balanced.yaml),
+Batch 3 (FINISHED, all five exit 0): the design-matched external corpus (configs/external_balanced.yaml),
 screened for Cas9 and split on 2026-10-30. Edges chosen to span the
 within-cluster ceiling's range while matching four of stage A's thresholds, so
 the two corpora can be compared threshold by threshold.
@@ -24,7 +24,7 @@ the two corpora can be compared threshold by threshold.
   ext_t65      65  0.00313    fc-01M6A112MKZX2WJ9A23XEEN0C1
   ext_t75      75  0.00203    fc-01M6A113CRM0ZC863SDM4HC0PX
 
-Batch 4: second backbone (conditioned_lm_small = progen2-small), stage A
+Batch 4 (FINISHED, all three exit 0): second backbone (conditioned_lm_small = progen2-small), stage A
 corpus, three thresholds matching batch 1's.
   run          edge  ceiling    call id
   small_t30      30  0.00095    fc-01M6A128B6XSC36KH7TVKCCMNH
@@ -35,3 +35,12 @@ A first attempt at batch 4 was launched without --model and so ran the primary
 backbone, duplicating runs that already existed. Cancelled within a minute,
 before any checkpoint was written; cloud/launch.py now carries the --model flag
 it was missing.
+
+Results for batches 3 and 4: external_measured.md.
+
+The watcher polling batches 3 and 4 reported ext_t30 and ext_t40 as "FAILED
+Deadline exceeded". That was the watcher's own poll deadline. Both runs had
+already returned exit_code 0 after 7,694 s and 7,664 s; FunctionCall.get on
+their call ids returns the normal result dict. Reports were retrieved from
+checkpoints/stage_a/<run>/ on volume thermocas-gen-vol -- not runs/<run>/,
+which is where the first attempt at fetching them looked.
