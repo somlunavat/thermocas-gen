@@ -532,6 +532,81 @@ This is a **capacity** comparison and not an architecture-independence result.
 Both models are ProGen2 decoders sharing a tokenizer and a conditioning
 scheme. A second architecture family is untested.
 
+### 5.2d The test of the fixed-centre baseline (pre-registered, running)
+
+Section 5.2b's test of `-abs(edge - 55)` failed on its design rather than on
+its result: the two corpora's measured optima turned out to be 50 and 65
+degrees C, both within 10 degrees of the baseline's constant, so the baseline
+was never exposed. This section is the replacement, on the uncapped corpus of
+section 5.3, whose bound peaks at 35 degrees C. Four runs at 30, 35, 45 and 60
+degrees C, launched 2026-11-01.
+
+The corpus was screened for Cas9 homology before it became training data: 78
+of 204,039 sequences removed at >30% identity over >=50% coverage to a held-out
+Cas9, the strictest at 96.2%. (The design-matched corpus lost 11 of 35,361;
+this one is six times the size and unselected, so it contains real Cas9
+orthologs.) It was then re-clustered and split cluster-disjoint at 90/5/5 --
+train 182,522 / val 10,176 / test 11,263, both classes present in both
+held-out splits -- and the bound sweep re-run on the screened corpus, which is
+the version quoted below.
+
+**The three predictors disagree here, and this was verified before launch
+rather than asserted.** Over these four thresholds:
+
+| edge (C) | thermo% | corpus-wide | within-cluster | `-abs(edge - 55)` |
+|---|---|---|---|---|
+| 30 | 68.8% | 0.113 (2nd) | 0.100 (4th) | 4th |
+| 35 | 49.4% | **0.148 (1st)** | **0.119 (1st)** | 3rd |
+| 45 | 9.2% | 0.100 (4th) | 0.110 (2nd) | 2nd |
+| 60 | 6.4% | 0.115 (3rd) | 0.107 (3rd) | **1st** |
+
+Spearman between the corpus-wide bound and the baseline over these four edges
+is **0.0**, and between the within-cluster bound and the baseline **+0.2**.
+Section 5.2b's edges gave +0.9, which is why that test could not separate them;
+the check that was missing then is this one.
+
+**Primary outcome, fixed in advance: the sign of (gain at 35) - (gain at 60).**
+Both corpus statistics rank 35 degrees C first and 60 degrees C third; the
+baseline ranks them the other way round. This is a single binary comparison
+across the widest predicted gap available on this corpus, and at n=4 it is far
+better powered than a rank correlation. Reported on validation and on the
+cluster-disjoint test split, with the shuffle spread of each run.
+
+- **Positive on both splits:** the corpus statistics beat the fixed-centre
+  baseline on a corpus where the two disagree. Section 5.1c's open problem
+  closes in the measure's favour and the abstract's concession is narrowed to
+  the two design-matched corpora.
+- **Negative on both splits:** the baseline wins where it was most exposed.
+  Section 5.1c stands as a negative result, and the paper states that no
+  corpus statistic we tested chooses label definitions better than distance
+  from the middle of the temperature range.
+- **Split:** reported as inconclusive, not resolved in whichever direction the
+  test split happens to fall.
+
+**Secondary: Spearman against each of the three predictors**, on both splits,
+with exact permutation p over all 4! = 24 relabelings. Note in advance that
+the smallest attainable p at n=4 is 0.042 and only a perfect rank match
+reaches it, so the secondary analysis can support a predictor and cannot
+refute one.
+
+**Void conditions, stated before the numbers exist.** This corpus's bound
+spans 0.100% to 0.148%, a factor of 1.5, against 3.2x on the design-matched
+corpus; a narrow predictor range can correspond to measured differences too
+small to resolve. The test is therefore declared **void rather than negative**
+if either holds: (i) the four measured gains all lie within two standard
+deviations of one another, so there is no ordering to predict; or (ii) any run
+fails Gate 2's significance criterion, since a gain that is not distinguishable
+from zero cannot rank anything. A void outcome leaves section 5.1c's open
+problem open and says so.
+
+Two known weaknesses, recorded now so they cannot be discovered later as
+excuses. At n=4 the within-cluster and corpus-wide forms agree on the top
+threshold, so this experiment cannot separate them from each other; it
+separates both from the baseline and nothing more. And 45 and 60 degrees C sit
+below the corpus's 37 degrees C cliff, with hot classes of 9.2% and 6.4%, so
+their held-out hot mass is roughly 1,000 and 700 sequences -- enough to measure,
+but the thinnest in the paper.
+
 ### 5.3 Sampling design is half the measurement
 
 The uncapped, unbalanced external corpus peaks at 35 degrees C instead, and

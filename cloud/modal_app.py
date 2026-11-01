@@ -143,6 +143,14 @@ EXTRA_CORPORA = {
         "data/processed/external_balanced_proteins_screened.fasta",
         "data/processed/external_balanced_label_table.csv",
     ),
+    # The uncapped form of the same corpus. Its ceiling peaks at 35 C rather
+    # than 60 because Swiss-Prot piles up at 37, which is what makes it the
+    # test of the fixed-centre baseline in paper/draft.md section 5.1c. Six
+    # times the residue mass of the balanced form, so uploads take longer.
+    "external": (
+        "data/processed/external_proteins_screened.fasta",
+        "data/processed/external_label_table.csv",
+    ),
 }
 
 # Directories that live on the volume rather than in the repository copy.

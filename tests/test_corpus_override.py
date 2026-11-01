@@ -29,11 +29,11 @@ from thermocas.data.cluster import ClusterParams, SplitParams
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# Trained on by the cross-corpus experiment. configs/external.yaml is the
-# uncapped counterpart and is measurement-only, so it is held to the config
-# contract but not to the trainability one.
-TRAINABLE = ("pretrain", "external_balanced")
-MEASUREMENT_ONLY = ("external",)
+# Trained on by the cross-corpus experiment. configs/external.yaml joined this
+# list on 2026-11-01: it was measurement-only until it became the test of the
+# fixed-centre baseline, and the screen and splits it needed were added then.
+TRAINABLE = ("pretrain", "external_balanced", "external")
+MEASUREMENT_ONLY = ()
 
 
 class TestConfigContract:
@@ -77,12 +77,24 @@ class TestConfigContract:
     def test_it_has_a_splits_dir(self, name):
         assert "paths/splits_dir" in Config.load(name)
 
-    def test_the_external_corpus_clusters_like_stage_a(self):
-        """The within-cluster ceiling column is only comparable across the two
-        corpora if they were clustered at the same thresholds."""
+    @pytest.mark.parametrize("name", ("external_balanced", "external"))
+    def test_the_external_corpora_cluster_like_stage_a(self, name):
+        """The within-cluster ceiling column is only comparable across corpora
+        if they were clustered at the same thresholds."""
         a = ClusterParams.from_config(Config.load("pretrain"))
-        b = ClusterParams.from_config(Config.load("external_balanced"))
+        b = ClusterParams.from_config(Config.load(name))
         assert (a.min_seq_id, a.coverage) == (b.min_seq_id, b.coverage)
+
+    def test_every_trainable_corpus_is_uploadable(self):
+        """A corpus stage A can be pointed at but cloud/modal_app.py cannot
+        upload is a run that fails after the image builds. `pretrain` is the
+        default corpus and is uploaded by `upload` with no --corpus."""
+        source = (REPO_ROOT / "cloud" / "modal_app.py").read_text()
+        extras = source.split("EXTRA_CORPORA = {")[1].split("}")[0]
+        for name in TRAINABLE:
+            if name == "pretrain":
+                continue
+            assert f'"{name}"' in extras, name
 
 
 def split_bins(name: str) -> dict[str, dict[str, int]]:

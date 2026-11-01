@@ -8,10 +8,21 @@
 # with n=1 the alternative explanation is that the curve is a property of how
 # we built stage A. This corpus is the second observation.
 #
-# NEVER TRAIN ON THIS. It is a measurement corpus. It has had no Cas9
-# annotation screen and no alignment screen against the held-out Cas9
-# sequences, so if it reached stage A the stage B leakage gate would be
-# measuring nothing. configs/pretrain.yaml is the corpus training reads.
+# THIS BECAME TRAINING DATA ON 2026-11-01, and the warning that used to stand
+# here -- never train on this, it has had no Cas9 screen -- is why the screen
+# below exists. It is now screened at the same thresholds as every other
+# trainable corpus and split cluster-disjoint, so stage A may read it.
+#
+# WHAT IT IS FOR. Every corpus trained on before today was assembled by our own
+# species-balancing and per-species cap, and their measured optima came out at
+# 50 and 65 C -- both close to the middle of the temperature range, which is
+# where the `-abs(edge - 55)` baseline of paper/draft.md section 5.1c points
+# for free. That baseline has not yet been put at risk. This corpus is the one
+# that can do it: with no cap and no balancing, its ceiling peaks at 35 C
+# because Swiss-Prot piles up at 37, so the corpus statistic and the
+# fixed-centre baseline disagree about which threshold is best. See
+# results/ceiling_sweep_20261030/external_measured.md for why the
+# design-matched corpus could not settle this.
 #
 # WHAT IS INDEPENDENT, AND WHAT IS NOT. Independent: the sequence set
 # (UniProtKB reviewed bacteria and archaea in full, no species selection and
@@ -32,6 +43,10 @@ paths:
   # loaded prokaryotes-only, so the subset never has to be requested.
   sequences: data/raw/external/uniprot_sprot.fasta.gz
   labeled_fasta: data/processed/external_proteins.fasta
+  # What stage A reads. A config without this key falls back to the unscreened
+  # file above, which is the one failure here that passes every downstream gate
+  # while invalidating the stage B leakage result.
+  screened_sequences: data/processed/external_proteins_screened.fasta
   label_table: data/processed/external_label_table.csv
   clusters: data/processed/external_clusters.tsv
   splits_dir: data/splits/external
@@ -86,10 +101,31 @@ cluster:
   cov_mode: 0
   cluster_mode: 0
 
-# Splitting. Present for symmetry with configs/external_balanced.yaml so the
-# two corpora carry the same columns; this one is not trained on -- the
-# measured-gain experiment uses the design-matched corpus, because that is the
-# one whose ceiling curve matches stage A's.
+# Alignment screen against the held-out Cas9 sequences, identical to
+# configs/external_balanced.yaml and stricter than the stage B leakage gate
+# (30% over 50% coverage against 45% over 80%), for the reason
+# 09_screen_broad.py gives: a large corpus hides a borderline homolog far more
+# easily than a 1,019-sequence one.
+exclude_cas9:
+  enabled: true
+  name_patterns: [cas9, csn1, csx12, "crispr-associated endonuclease"]
+  pfam_profiles: [PF22702, PF18541, PF13395, PF01844, PF16592, PF16593, PF16595, PF21069, PF22385]
+  max_identity_to_heldout: 0.30
+  alignment_coverage: 0.50
+  fail_on_violation: true
+
+# Stage A gate. The cluster floor is pretrain.yaml's and is the one that bears
+# on whether the token can carry signal. The sequence floor is lowered from
+# 20,000 to 10,000 because this corpus is uncapped rather than sampled: at a
+# 60 C threshold its hot bin holds 14,481 sequences, which is what Swiss-Prot
+# has above 60 C and not a deficiency of our sampling. Lowering a gate to let a
+# planned run through is exactly the move that gates exist to prevent, so the
+# reason is recorded here and in PROJECT_LOG.md rather than left to the diff.
+gate:
+  min_clusters_per_bin: 200
+  min_sequences_per_bin: 10000
+
+# Splitting, cluster-disjoint, matching configs/external_balanced.yaml.
 split:
   fractions: {train: 0.90, val: 0.05, test: 0.05}
   holdout_subfamily: null
