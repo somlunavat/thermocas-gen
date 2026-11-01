@@ -44,3 +44,32 @@ already returned exit_code 0 after 7,694 s and 7,664 s; FunctionCall.get on
 their call ids returns the normal result dict. Reports were retrieved from
 checkpoints/stage_a/<run>/ on volume thermocas-gen-vol -- not runs/<run>/,
 which is where the first attempt at fetching them looked.
+
+Batch 5: the uncapped external corpus (configs/external.yaml), screened for
+Cas9 and re-split 2026-11-01. The test of -abs(edge - 55), pre-registered in
+paper/draft.md section 5.2d before launch. Edges chosen so the predictors
+disagree: Spearman between the corpus-wide bound and the baseline over these
+four is 0.0, against +0.9 for batch 3's edges, which is why batch 3 could not
+separate them. Ceilings are the post-screen corpus-wide figures from
+results/external_corpus_20261029/sweep_external_screened.txt.
+  run        edge  ceiling    call id
+  unc_t30      30  0.00113    fc-01M6CCKX4JEJ6KX6ABK041GC0B
+  unc_t35      35  0.00148    fc-01M6CCMJY8B8GD4XEZ6FQKJBFD
+  unc_t45      45  0.00100    fc-01M6CCMPXX1Z17TCTK6T6QPV7J
+  unc_t60      60  0.00115    fc-01M6CCMTV57FFZYXJNXJ58QZQ1
+
+No --gate2-limit on this batch, unlike batches 1-4, which passed 2000. The
+flag takes the FIRST n examples rather than a random sample, and on this
+corpus the first 2,000 validation sequences are 8.1% thermophilic against the
+split's 10.3% -- at a 60 C threshold that is 112 hot sequences, below the 200
+floor. Omitting it falls back to conditioning_gate/max_examples = 5,000. The
+test split is scored in full here as in every other run, so the held-out
+numbers remain directly comparable across batches; the validation numbers rest
+on a larger subsample than batches 1-4 and that is a difference between
+batches, not a correction to them.
+
+unc_t30 was launched twice by mistake, the second time while trying to read
+back the first launch's flags. The duplicate (fc-01M6CCM29W9MYA1MBNJ4VCFSB1)
+was cancelled within a minute, before any checkpoint was written -- the same
+error as batch 4's, from the same cause: running a launch command to find out
+what it would do.

@@ -2045,3 +2045,53 @@ reports 50 pre-existing findings, almost all E501 in `scripts/02_search.py`,
 `scripts/03_filter_domains.py` and several older test files, plus one unused
 import in `02_search.py`. None are in anything touched recently. Worth one
 cleanup commit at some point, kept out of this one so the diff stays readable.
+
+## 2026-11-01 — The uncapped corpus becomes training data, and the baseline test is pre-registered
+
+Four runs launched on the uncapped external corpus at 30, 35, 45 and 60 C.
+This is the experiment section 5.2b was supposed to be and was not: its two
+corpora's measured optima came out at 50 and 65 C, both within 10 C of
+`-abs(edge - 55)`'s constant, so the baseline was never exposed.
+
+`configs/external.yaml` had said NEVER TRAIN ON THIS in capitals, because it
+had no Cas9 screen. The screen removed **78 of 204,039 sequences**, against 11
+of 35,361 on the design-matched corpus — it is six times the size and
+unselected, so it holds real Cas9 orthologs, the strictest at 96.2% identity
+to a held-out sequence. Had this corpus been trained on as it stood, the stage
+B leakage gate would have passed while measuring memorisation. The warning was
+right and is now replaced by a note saying what changed rather than deleted.
+
+Re-clustered and re-split: train 182,522 / val 10,176 / test 11,263, both
+classes in both held-out splits, stage A gate passing. The sequence floor was
+lowered from 20,000 to 10,000 because the hot bin at 60 C holds 14,481
+sequences, which is Swiss-Prot's count above 60 C rather than a deficiency of
+sampling. Lowering a gate to let a planned run through is exactly what gates
+prevent, so the reason is recorded in the config and here.
+
+The edges were chosen by checking the thing I asserted last time and did not
+verify: over these four, Spearman between the corpus-wide bound and the
+baseline is **0.0** and between the within-cluster bound and the baseline
+**+0.2**, against +0.9 over batch 3's edges. Section 5.2d states the primary
+outcome (the sign of gain@35 − gain@60, a single binary comparison across the
+widest predicted gap, far better powered at n=4 than a rank correlation), the
+secondary analysis, and two void conditions — written before the numbers
+exist, because the pre-registration is the only thing that stops a 1.5x
+predictor range being read favourably after the fact.
+
+Gate 2 runs on 5,000 validation sequences here rather than the 2,000 of
+batches 1–4. `--gate2-limit` takes the first n, not a random sample, and the
+first 2,000 of this validation split are 8.1% thermophilic against the split's
+10.3% — 112 hot sequences at a 60 C threshold, below the 200 floor. The test
+split is scored in full as always, so held-out numbers stay comparable across
+batches.
+
+I launched unc_t30 twice, the second time while trying to read back what flags
+the first launch had used. Cancelled within a minute, no checkpoint written.
+Same error as batch 4's and the same cause: running a launch command to find
+out what it does. The lesson that did not stick the first time is that
+`launch.py train` is not idempotent and must never be used as an inspection
+tool.
+
+Spend: roughly $49 all in, against the $31 originally estimated and the
+$9–12 I quoted for this batch before noticing it needed the larger Gate 2
+subsample and the full 11,263-sequence test split.
