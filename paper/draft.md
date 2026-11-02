@@ -39,19 +39,24 @@ worth a factor of 3.9 in measured conditioning gain, from +0.070% at cold
 thresholds to +0.273% on a plateau between 45 and 65 degrees C, with margins an
 order of magnitude above the shuffle noise floor. Mutual information between
 residue identity and label, computed in CPU-minutes from residue counts alone,
-predicts this ordering only when it is conditioned on sequence family: the
-family-conditioned statistic reaches Spearman +0.71 on validation and +0.74 on
-a held-out test split (exact permutation p = 0.029 and 0.021), while the
-corpus-wide statistic reaches only +0.38 and is not significant. The difference
-is interpretable, and it is a warning about the corpus-wide form: its largest
-error is at the most class-balanced threshold, where the residue histogram sees
-a difference that the model cannot use. We also report two negative results.
+predicts this ordering on our species-balanced corpora only when it is
+conditioned on sequence family -- Spearman +0.71 on validation and +0.74 on a
+held-out test split (exact permutation p = 0.029 and 0.021), against +0.38 and
+not significant for the corpus-wide form -- and on an unselected corpus it does
+not predict it at all. We identify the mechanism and show it is predictable in
+advance: mutual information is maximised at an even marginal, so the statistic
+is inflated wherever a threshold happens to split the corpus evenly, which on
+a reviewed-protein corpus means wherever it separates organisms annotated at
+37 degrees C from everything else. There, the bound rises with class balance
+while measured gain falls with it (Pearson -0.93). We also report two negative results.
 The statistic does not rank label definitions that differ in granularity rather
 than threshold, and normalizing by label entropy makes that worse rather than
 better. And neither form beats a baseline that reads nothing from the corpus at
-all -- distance from the middle of the temperature range -- on either of the two
-corpora we train on, whose measured optima are 50 and 65 degrees C and so are
-both close to that middle. The plateau itself is robust: it reproduces on a
+all -- distance from the middle of the temperature range. We test this on a
+third corpus chosen in advance so that the two disagree, with the outcome
+pre-registered, and the baseline wins it outright: rank correlation +1.000
+against the corpus statistic's +0.000, and the pre-registered comparison
+negative at more than six standard deviations on both splits. The plateau itself is robust: it reproduces on a
 second corpus built from a different growth-temperature database and a different
 sequence source, and the ordering of thresholds reproduces on a second backbone
 an order of magnitude smaller. Finally, a worked negative case shows two corpus
@@ -103,22 +108,27 @@ To find out, we hold everything except the label fixed. Our sweep variants are
 *relabelings*: `temp_bin` is recomputed from the recorded growth temperature in
 memory at startup, so every variant trains on byte-identical sequences,
 clusters and splits, and only the meaning of the control token changes. Across
-thirteen runs on two corpora and two backbones we find that **how the label is
-defined is worth a factor of 3.9 in measured conditioning gain**, from +0.070%
-at cold thresholds to +0.273% on a plateau between 45 and 65 degrees C, with
-per-run margins an order of magnitude above the shuffle noise floor. Label
+seventeen runs on three corpora and two backbones we find that **how the label
+is defined is worth a factor of 3.9 to 4.2 in measured conditioning gain**,
+from +0.070% at cold thresholds to +0.273% on a plateau between 45 and 65
+degrees C on the primary corpus, and by comparable factors on the other two,
+with per-run margins an order of magnitude above the shuffle noise floor. Label
 definition is a free parameter that nobody tunes and it is worth more than most
 of the modelling choices made around it.
 
-The denominator itself works, with one important qualification and one
-unresolved failure. It predicts the ordering of label definitions only when the
-mutual information is conditioned on sequence family; the corpus-wide form does
-not predict it at all, and its largest error falls at the most class-balanced
-threshold, where a residue histogram sees a difference that the model cannot
-use. And on neither corpus we trained does either form beat a baseline that
-reads nothing from any corpus -- distance from the middle of the temperature
-range. We report that as a result rather than a limitation, because it bounds
-how much the measure is currently worth.
+The denominator does not work well enough to recommend, and establishing that
+carefully is the rest of the paper. On our two species-balanced corpora it
+predicts the ordering of label definitions when the mutual information is
+conditioned on sequence family, and not otherwise. On a third corpus, built
+from the same database without species selection, it predicts nothing: the
+bound and the measured gain are anti-correlated, because mutual information
+rises with class balance and on that corpus the balanced thresholds are the
+semantically empty ones. And a baseline that reads nothing from any corpus --
+distance from the middle of the temperature range -- beats it everywhere we
+looked, including on the corpus we chose in advance to give the statistic its
+best chance. We report these as results rather than limitations, because what
+the field needs is a denominator that works, and the most useful thing we can
+say about this candidate is precisely where and why it fails.
 
 We make no claim that the measure estimates achievable gain, and none that it
 ranks label definitions robustly. It is a lower bound computed from unigram
@@ -135,15 +145,18 @@ goes.
 2. The measurement that label definition is worth 3.9x in conditioning gain,
    over eight thresholds on one corpus and five on a second, each verified
    against a shuffled-token control and a cluster-disjoint test split.
-3. The finding that a corpus-only statistic predicts which definition is
-   better only when conditioned on sequence family, with the failure of the
-   corpus-wide form traced to class balance -- a mechanism predicted in advance
-   from the fact that mutual information is maximised at an even marginal.
-4. Three documented limits: the measure cannot rank label definitions that
-   differ in granularity rather than threshold; it does not beat a fixed-centre
-   rule of thumb at ranking on either corpus we trained; and the measured
-   optimum is a plateau wide enough that locating it precisely has little
-   value.
+3. A characterisation of when a corpus-only statistic predicts which
+   definition is better and when it does not, with the failure traced to class
+   balance -- a mechanism predicted in advance from the fact that mutual
+   information is maximised at an even marginal, and strong enough on an
+   unselected corpus to anti-correlate the bound with measured gain at
+   Pearson -0.93.
+4. A pre-registered negative result: on a corpus chosen in advance so that the
+   two disagree, a baseline that reads nothing from any corpus ranks label
+   definitions perfectly and the corpus-wide statistic ranks them no better
+   than chance. With two further documented limits -- no ranking across
+   granularities, and a measured optimum that is a plateau wide enough that
+   locating it precisely has little value.
 5. A worked negative case in which two corpus gates rule out a Cas9
    conditioning experiment for the price of a CPU afternoon.
 
@@ -299,14 +312,25 @@ cluster-disjointness is enforced at the clustering stage and verified in each
 report.
 
 **Setup.** ProGen2-base with LoRA, stage A, 3,000 steps on a single A10.
-Thirteen runs: eight thresholds on the primary corpus (section 5.1), five on a
-second corpus (5.2b) and three on a second backbone (5.2c), with 30, 55 and 75
-degrees C shared between the first and third so they compare directly.
+Seventeen runs: eight thresholds on the primary corpus (section 5.1), five on
+a design-matched second corpus (5.2b), three on a second backbone (5.2c), and
+four on an unselected third corpus (5.2d), with 30, 55 and 75 degrees C shared
+between the first and third so they compare directly.
 
 **Primary corpus.** 311,987 sequences, 113.8M residues, 47 distinct growth
 temperature values, 1,552 both-class clusters at the 45 degrees C threshold,
 279,980 training sequences. Growth temperatures from Gosha; sequences from
 UniProt, species-selected and capped at 500 per species.
+
+**Third corpus.** The same Swiss-Prot/Engqvist join with no per-species cap
+and no balancing -- 204,039 sequences over 1,816 species and 64.9M residues,
+the corpus as the databases have it. Screened for Cas9 homology (78 sequences
+removed, the strictest at 96.2% identity to a held-out Cas9) and split
+cluster-disjoint at 90/5/5: train 182,522 / val 10,176 / test 11,263. Its
+Gate 2 runs on 5,000 validation sequences rather than 2,000, because the
+subsample takes the first n and the first 2,000 of this split are 8.1%
+thermophilic against its true 10.3%; test splits are scored in full on every
+run in the paper.
 
 **Second corpus.** UniProtKB/Swiss-Prot 2026_03 joined to Engqvist (BMC
 Microbiology 18:177, 2018) instead of Gosha, then put through the same
@@ -374,7 +398,18 @@ class-balanced threshold in the corpus, H(bin) = 0.679 of a possible 0.693. The
 residue histogram sees a large difference because the classes are even, but the
 hot side at 35 degrees C is mostly 37 degrees C mesophiles, so the label is
 semantically mush and the model cannot use it. Conditioning on family removes
-most of this: within-cluster reads +0.114% there, ranked third.
+most of this *on this corpus*: within-cluster reads +0.114% there, ranked
+third.
+
+The qualifier is not hedging. Section 5.2d shows the family-conditioned form
+failing in exactly the same way on a corpus that was not species-balanced,
+where both aggregations correlate +0.40 with H(bin) and measured gain
+correlates **-0.80** with it. Per-species capping and species balancing break
+up the pile-ups that make clusters internally balanced for empty reasons; a
+corpus assembled without them does not get the rescue. What 5.1b establishes
+is therefore narrower than it first appears: conditioning on family mitigates
+the balance artifact on corpora built like ours, and the artifact is the
+measure's dominant failure mode either way.
 
 This is the within-cluster quantity's one real claim to credibility and it has
 to be stated: it was not chosen after seeing these data. It is what
@@ -383,22 +418,34 @@ the measure that computes it describes it as the token's value given the
 family. The corpus-wide column was preferred for sweep comparisons only because
 it carries no cluster-count caveat.
 
-### 5.1c The baseline that reads nothing from the corpus
+### 5.1c The baseline that reads nothing from the corpus beats both
 
-`-abs(edge - 55)` scores above both. On this corpus, a corpus statistic does not
-beat "pick the middle of the temperature range", and the paper has to concede
-that in the results rather than in the limitations.
+`-abs(edge - 55)` scores above both aggregations here, and the paper concedes
+it in the results rather than in the limitations.
 
-The defence is that the baseline's constant was chosen knowing the answer, and
-nothing computed from a new corpus tells you where to centre it -- while
-section 5.3 shows the optimum is *not* always near 55. A corpus statistic should
-win exactly where the optimum moves. Section 5.2b was pre-registered as that
-test and came back inconclusive: the second corpus's measured optimum moved to
-65 degrees C, which is not far enough from 55 to put the baseline at risk. So
-this stands as an open problem, and the sentence the paper has to carry is that
-no statistic tested here beats a rule of thumb at *ranking* label definitions.
-The corpus statistics do beat it at predicting the *size* of the gain
-(section 5.2b), which is a weaker and less useful claim.
+The obvious defence -- that the baseline's constant was chosen knowing the
+answer, that nothing computed from a new corpus tells you where to centre it,
+and that section 5.3 shows the optimum is not always near 55 -- was tested
+twice and does not survive. Section 5.2b's test was inconclusive because both
+corpora's optima sat within 10 degrees C of 55. Section 5.2d's was
+pre-registered on a corpus where the predictors disagree outright, and the
+baseline won it: rank correlation **+1.000** against the corpus-wide
+statistic's **+0.000**, with the pre-registered primary comparison negative at
+6.6 and 7.1 sigma on the two splits.
+
+So this is not an open problem that the paper flags and leaves. It is a
+result:
+
+> **No corpus statistic tested here ranks label definitions better than
+> distance from the middle of the temperature range.** On the one corpus built
+> to separate the two, the rule of thumb was perfect and the corpus-wide
+> statistic was exactly uninformative.
+
+What the statistic retains is weaker and should be stated with it: it tracks
+the *magnitude* of achievable gain better than the baseline does on the
+species-balanced corpora (Pearson +0.98 against +0.83, section 5.2b), and its
+failure mode is predictable in advance from H(bin) rather than mysterious
+(section 5.2d). A reader deciding whether to compute it deserves both halves.
 
 ### 5.2 The curve shape transfers to a corpus we did not build
 
@@ -532,80 +579,105 @@ This is a **capacity** comparison and not an architecture-independence result.
 Both models are ProGen2 decoders sharing a tokenizer and a conditioning
 scheme. A second architecture family is untested.
 
-### 5.2d The test of the fixed-centre baseline (pre-registered, running)
+### 5.2d The fixed-centre baseline wins: the pre-registered test, and its result
 
-Section 5.2b's test of `-abs(edge - 55)` failed on its design rather than on
-its result: the two corpora's measured optima turned out to be 50 and 65
-degrees C, both within 10 degrees of the baseline's constant, so the baseline
-was never exposed. This section is the replacement, on the uncapped corpus of
-section 5.3, whose bound peaks at 35 degrees C. Four runs at 30, 35, 45 and 60
-degrees C, launched 2026-11-01.
+Section 5.2b's test of `-abs(edge - 55)` failed on its design: both corpora's
+measured optima landed within 10 degrees C of the baseline's constant, so it
+was never exposed. This is the replacement, on the uncapped corpus of section
+5.3, whose bound peaks at 35 degrees C. Four runs at 30, 35, 45 and 60 degrees
+C. The design, the primary outcome, the secondary analysis and two void
+conditions were written into this section and committed **before the runs were
+launched**; what follows reports them in the order they were fixed. Full
+analysis in `results/ceiling_sweep_20261030/uncapped_measured.md`.
 
 The corpus was screened for Cas9 homology before it became training data: 78
 of 204,039 sequences removed at >30% identity over >=50% coverage to a held-out
 Cas9, the strictest at 96.2%. (The design-matched corpus lost 11 of 35,361;
 this one is six times the size and unselected, so it contains real Cas9
-orthologs.) It was then re-clustered and split cluster-disjoint at 90/5/5 --
-train 182,522 / val 10,176 / test 11,263, both classes present in both
-held-out splits -- and the bound sweep re-run on the screened corpus, which is
-the version quoted below.
+orthologs, and training on it unscreened would have left the stage B leakage
+gate passing while measuring memorisation.) It was re-clustered and split
+cluster-disjoint at 90/5/5 -- train 182,522 / val 10,176 / test 11,263, both
+classes in both held-out splits -- and the bound sweep re-run on the screened
+corpus.
 
-**The three predictors disagree here, and this was verified before launch
-rather than asserted.** Over these four thresholds:
+**The predictors disagree here, and this was verified before launch rather
+than asserted.** Over these four thresholds Spearman between the corpus-wide
+bound and the baseline is **0.0**, and between the within-cluster bound and
+the baseline **+0.2**. Over section 5.2b's edges both were +0.9, which is why
+that test could not separate them.
 
-| edge (C) | thermo% | corpus-wide | within-cluster | `-abs(edge - 55)` |
+| edge (C) | thermo% | H(bin) | corpus-wide | within-cluster | val gain | test gain | gain/bound | Gate 2 |
+|---|---|---|---|---|---|---|---|---|
+| 30 | 68.8% | 0.6205 | +0.113% | +0.100% | +0.035% | +0.038% | 0.31x | **failed (size)** |
+| 35 | 49.4% | 0.6931 | **+0.148%** | **+0.119%** | +0.065% | +0.061% | 0.44x | **failed (size)** |
+| 45 | 9.2% | 0.3080 | +0.100% | +0.110% | +0.120% | **+0.137%** | 1.20x | passed |
+| 60 | 6.4% | 0.2386 | +0.115% | +0.107% | **+0.148%** | +0.119% | 1.29x | passed |
+
+**Primary outcome: negative on both splits.** The pre-registered statistic is
+the sign of (gain at 35) - (gain at 60), where the corpus statistics and the
+baseline predict opposite orderings.
+
+| split | at 35 | at 60 | difference | sigma |
 |---|---|---|---|---|
-| 30 | 68.8% | 0.113 (2nd) | 0.100 (4th) | 4th |
-| 35 | 49.4% | **0.148 (1st)** | **0.119 (1st)** | 3rd |
-| 45 | 9.2% | 0.100 (4th) | 0.110 (2nd) | 2nd |
-| 60 | 6.4% | 0.115 (3rd) | 0.107 (3rd) | **1st** |
+| validation | +0.065% | +0.148% | **-0.083 pp** | 6.6 |
+| test | +0.061% | +0.119% | **-0.058 pp** | 7.1 |
 
-Spearman between the corpus-wide bound and the baseline over these four edges
-is **0.0**, and between the within-cluster bound and the baseline **+0.2**.
-Section 5.2b's edges gave +0.9, which is why that test could not separate them;
-the check that was missing then is this one.
+**Secondary: the baseline is perfect and the corpus-wide statistic is exactly
+uninformative.**
 
-**Primary outcome, fixed in advance: the sign of (gain at 35) - (gain at 60).**
-Both corpus statistics rank 35 degrees C first and 60 degrees C third; the
-baseline ranks them the other way round. This is a single binary comparison
-across the widest predicted gap available on this corpus, and at n=4 it is far
-better powered than a rank correlation. Reported on validation and on the
-cluster-disjoint test split, with the shuffle spread of each run.
+| predictor | rho (val) | exact p | rho (test) | exact p |
+|---|---|---|---|---|
+| corpus-wide bound | **+0.000** | 0.542 | -0.400 | 0.792 |
+| within-cluster bound | +0.200 | 0.458 | +0.400 | 0.375 |
+| `-abs(edge - 55)` | **+1.000** | **0.042** | +0.800 | 0.167 |
 
-- **Positive on both splits:** the corpus statistics beat the fixed-centre
-  baseline on a corpus where the two disagree. Section 5.1c's open problem
-  closes in the measure's favour and the abstract's concession is narrowed to
-  the two design-matched corpora.
-- **Negative on both splits:** the baseline wins where it was most exposed.
-  Section 5.1c stands as a negative result, and the paper states that no
-  corpus statistic we tested chooses label definitions better than distance
-  from the middle of the temperature range.
-- **Split:** reported as inconclusive, not resolved in whichever direction the
-  test split happens to fall.
+0.042 is the smallest p attainable at n=4 and only a perfect rank match
+reaches it. As pre-registered, this analysis cannot separate the two
+aggregations from each other and is not read as doing so.
 
-**Secondary: Spearman against each of the three predictors**, on both splits,
-with exact permutation p over all 4! = 24 relabelings. Note in advance that
-the smallest attainable p at n=4 is 0.042 and only a perfect rank match
-reaches it, so the secondary analysis can support a predictor and cannot
-refute one.
+**Neither void condition is met, and the letter of them is what counts.** The
+four gains span 0.113 pp against a largest two-sigma of 0.025 pp, so condition
+(i) fails. Every run cleared the significance criterion at z between 10.9 and
+40.7, so condition (ii) fails. `unc_t30` and `unc_t35` did fail Gate 2, but on
+the **size** criterion, which condition (ii) does not name -- it names
+significance, because a gain indistinguishable from zero cannot rank anything,
+and these are distinguishable from zero at ten to forty sigma. Reading "failed
+Gate 2" as voiding the test would be a reinterpretation made after seeing an
+unfavourable result, and it is not available.
 
-**Void conditions, stated before the numbers exist.** This corpus's bound
-spans 0.100% to 0.148%, a factor of 1.5, against 3.2x on the design-matched
-corpus; a narrow predictor range can correspond to measured differences too
-small to resolve. The test is therefore declared **void rather than negative**
-if either holds: (i) the four measured gains all lie within two standard
-deviations of one another, so there is no ordering to predict; or (ii) any run
-fails Gate 2's significance criterion, since a gain that is not distinguishable
-from zero cannot rank anything. A void outcome leaves section 5.1c's open
-problem open and says so.
+#### Why: the balance artifact survives family conditioning
 
-Two known weaknesses, recorded now so they cannot be discovered later as
-excuses. At n=4 the within-cluster and corpus-wide forms agree on the top
-threshold, so this experiment cannot separate them from each other; it
-separates both from the baseline and nothing more. And 45 and 60 degrees C sit
-below the corpus's 37 degrees C cliff, with hot classes of 9.2% and 6.4%, so
-their held-out hot mass is roughly 1,000 and 700 sequences -- enough to measure,
-but the thinnest in the paper.
+| | Spearman with H(bin) |
+|---|---|
+| corpus-wide bound | +0.400 |
+| within-cluster bound | +0.400 |
+| measured gain (val) | **-0.800** |
+| measured gain (test) | **-0.600** |
+
+Pearson between H(bin) and measured validation gain is **-0.926**. Mutual
+information is maximised at an even marginal, so both bounds rise with
+balance; on this corpus measured gain falls with it. The two are
+anti-correlated through class balance, which is sufficient to produce a rank
+correlation of zero.
+
+The cause is the 37 degrees C pile-up. At 30 and 35 degrees C the corpus is
+68.8% and 49.4% thermophilic, but the hot class is overwhelmingly Swiss-Prot's
+clinical and model organisms annotated at exactly 37. The label is nearly
+perfectly balanced and semantically empty: it separates "37 degrees C" from
+"not 37 degrees C". A residue histogram sees a large composition difference
+between two arbitrary halves of a corpus; the model finds 0.31x and 0.44x of
+it usable, the two worst ratios in this work and the reason both runs failed
+Gate 2 on size. At 45 and 60 degrees C the hot class is 9.2% and 6.4% and
+genuinely thermophilic: the bound is *lower*, because the marginal is
+lopsided, and measured gain is higher.
+
+**This narrows section 5.1b.** Conditioning on family removes most of the
+balance artifact on the two species-balanced corpora, where per-species
+capping breaks up exactly this kind of pile-up. It does not remove it here,
+because when half a corpus is 37 degrees C organisms a great many clusters are
+internally balanced at a 35 degrees C threshold for the same empty reason. The
+family-conditioned rescue is a property of corpus design, not of the
+aggregation.
 
 ### 5.3 Sampling design is half the measurement
 
@@ -693,8 +765,10 @@ calibrated predictor if it held. It must be reported as an observation and not
 a result, for a reason worth stating in the paper: the eight thresholds were
 split into "plateau" and "cold" after the table was in hand, and a ratio that
 tight across six post-hoc-selected points is exactly the shape a small sample
-produces by chance. It is a hypothesis for the external corpus to test, nothing
-more.
+produces by chance. It was a hypothesis for the external corpora to test, and
+they did not support it: the design-matched corpus gives 0.88x to 1.84x and the
+uncapped one 0.31x to 1.29x, the latter spanning a factor of 4.2 across four
+thresholds. The within-cluster form does not estimate either.
 
 ### 6.2 It does not rank across granularities, and the obvious fix is worse
 
@@ -732,10 +806,12 @@ Prokaryotes only; Engqvist's 7,682 eukaryote rows are excluded, as are the
 299,890 Swiss-Prot entries whose organism is absent from it. Two backbones,
 both ProGen2 decoders with the same tokenizer and conditioning scheme, so
 section 5.2c is a capacity comparison and not an architecture-independence
-result. Measured gain is validated on two corpora (5.2b), both of which were
-assembled by the same species-balancing and per-species capping design; the
-uncapped corpus of 5.3, which is the one whose optimum sits elsewhere, has not
-been trained on. The two growth-temperature databases both
+result. Measured gain is validated on three corpora: two assembled by the same
+species-balancing and per-species capping design (5.2b), and the uncapped
+corpus of 5.3 and 5.2d, which is the one that breaks the statistic. Two of the
+three therefore share a sampling design, and the conclusions that depend on
+design -- the family-conditioned rescue in 5.1b above all -- rest on those two.
+The two growth-temperature databases both
 scrape overlapping culture-collection catalogues (DSMZ, ATCC, JCM), so their
 agreement is evidence the bound is not an artifact of one *corpus* and not
 evidence that it survives an independent *measurement* of growth temperature.
@@ -745,7 +821,10 @@ A's 28.0%), so its larger measured gains are not evidence that a smaller corpus
 conditions better. Its within-cluster figures at 75 and 80 degrees C rest on 72
 and 59 clusters; the within-cluster column is used for the 30-65 degrees C
 comparisons in 5.2b, where cluster counts are 125 to 156, and the corpus-wide
-column elsewhere.
+column elsewhere. On the uncapped corpus the within-cluster figures at 45 and
+60 degrees C rest on 302 and 186 clusters, the thinnest used for any claim
+here, and its held-out hot classes at those thresholds are roughly 1,000 and
+700 sequences.
 
 ## 7. A worked negative case: Cas9
 
@@ -803,19 +882,23 @@ it can fail on a single tight family.
 
 **Label definition is an untuned free parameter and it is cheap to tune.** That
 is the finding we would most like a reader to act on, and it does not depend on
-the corpus statistic working. Across thirteen runs, the choice of threshold
-moves measured conditioning gain by a factor of 3.9 on the primary corpus and
-3.8 on the second, with the cold end of the range losing most of the available
-signal. Every system in section 2 fixes this parameter by convention.
+the corpus statistic working -- which, on the evidence below, it largely does
+not. Across seventeen runs, the choice of threshold moves measured
+conditioning gain by a factor of 3.9 on the primary corpus, 3.8 on the
+design-matched one and 4.2 on the uncapped one, with the cold end of the range
+losing most of the available signal in all three. Every system in section 2
+fixes this parameter by convention.
 
 Four recommendations, in descending order of how well this paper supports them.
 
 **Do not define the label at a cold threshold.** This is the robust result. On
-both corpora and both backbones, thresholds at or below 35 degrees C give a
-small fraction of the gain available between 40 and 65. If a corpus is
-dominated by organisms annotated at 37 degrees C -- as any unselected
-reviewed-protein corpus is -- a 35 degrees C threshold splits it evenly and
-produces a label whose hot class is mostly mesophiles.
+all three corpora and both backbones, thresholds at or below 35 degrees C give
+a small fraction of the gain available above 40. The trap is specific and
+worth naming: if a corpus is dominated by organisms annotated at 37 degrees C,
+as any unselected reviewed-protein corpus is, a threshold just below 37 splits
+it almost perfectly evenly and produces a label whose hot class is mostly
+mesophiles. It will look like the best-balanced choice and, on our uncapped
+corpus, it returned a third of the gain of a 60 degrees C threshold.
 
 **The conventional 45 degrees C threshold is nearly optimal, so do not retune
 it expecting much.** Our measured optimum is 50 degrees C at 1.14x over 45,
@@ -825,11 +908,14 @@ our own corpus statistic created -- it predicted a 1.67x gap between 45 and 55
 where the measured gap is 1.02x in the other direction -- and it is a case where
 the measure overstated what retuning was worth.
 
-**Report gains against a denominator.** A conditioning gain of X% means nothing
-in isolation; X% of what the corpus allows is comparable across papers. The
-corpus-wide form is the one to report alongside a gain, since it needs no
-cluster-count caveat, but the family-conditioned form is the one that predicted
-our measured ordering, and a paper that reports only one should say which.
+**Report gains against a denominator, and report H(bin) beside it.** A
+conditioning gain of X% means nothing in isolation; X% of what the corpus
+allows is at least comparable across papers, which is more than the field has
+now. But our own results are the reason to qualify this: the bound is inflated
+wherever the label splits the corpus evenly, so a gain reported as a fraction
+of it is flattered on balanced thresholds and penalised on lopsided ones. The
+label entropy costs nothing to report, makes the inflation visible, and is the
+diagnostic we would want from someone else's paper.
 
 **Hold the species-selection design fixed and report it.** The location of the
 optimum is a joint property of the corpus and the sampling design (section
@@ -839,16 +925,18 @@ uncapped corpus appeared to peak at 35 degrees C, which turned out to be
 Swiss-Prot's 37 degrees C pile-up rather than anything about thermophilic
 sequence.
 
-**Limits of the recommendation.** On neither corpus we trained does a corpus
-statistic beat a fixed-centre rule of thumb at *ranking* thresholds, because
-both corpora's measured optima -- 50 and 65 degrees C -- sit close to the
-middle of the temperature range where that rule of thumb points. It wins on
-magnitude (Pearson +0.98 against +0.83) and not on rank. The experiment that
-would decide it is a corpus whose optimum sits elsewhere, and the uncapped
-corpus of section 5.3 is one; we have measured its bound and not trained on it.
-Until that is done, the defensible claim is the one in section 5.1c: a cheap
-corpus statistic predicts the *size* of the gain well and does not yet earn its
-keep at choosing the label.
+**Do not use this statistic to choose the threshold.** We set out to supply a
+denominator and we would have preferred to recommend one. On the corpus chosen
+in advance to give it its best chance, against a baseline that reads nothing
+from any corpus, it ranked four label definitions no better than chance
+(+0.000) while the baseline ranked them perfectly (+1.000), with the
+pre-registered comparison negative at more than six sigma. A reader who wants
+a threshold is better served by "well above the mode of your temperature
+distribution" than by computing our measure. Where it does earn its cost is as
+a *scale*: on the species-balanced corpora it tracks the magnitude of
+achievable gain well (Pearson +0.98 against the baseline's +0.83), and that is
+the use the field actually lacks -- comparing a reported gain against what its
+corpus allowed, rather than choosing a label.
 
 **The strongest follow-up needs no new training.** Compute the bound for the
 published setups' own corpora. The Engqvist data behind PRIME's ~96M pairs is
@@ -871,22 +959,23 @@ recovered from each report as gain / z.
 
 **Figure 1** (`figure1_bound_vs_measured`) -- two panels, same y axis:
 corpus-wide bound against measured gain, and within-cluster bound against
-measured gain. Eight primary-corpus thresholds in each, with the second
-corpus's five overplotted in a different marker so both are on one scale.
-rho and the exact p are printed in each panel; 35 degrees C is labelled in
-both, since it is the point that moves most between them and carries the
-mechanism in 5.1b. The four-class variant appears in the left panel only,
-marked as not comparable, for 6.2. Carries 5.1b and 5.1c. The intended reading
-is immediate: the left panel is a cloud and the right is close to a line.
+measured gain, with all three trained corpora in each and a rank correlation
+printed per corpus per panel. Carries 5.1b, 5.1c and 5.2d. The figure computes
+its own Spearman and exact p from the points it plots, so it cannot state one
+number and show another.
 
 *Caption.* Measured conditioning gain against the corpus-only bound, under two
-aggregations of the same statistic. Left: the corpus-wide bound, which does not
-predict the ordering (Spearman +0.381, exact p = 0.180 over the eight
-primary-corpus thresholds). Right: the same statistic conditioned on sequence
-family, which does (+0.714, p = 0.029). The 35 degrees C threshold, the most
-class-balanced in the corpus, is the largest single error on the left and is
-corrected on the right. Second-corpus points are scored separately in section
-5.2b. Error bars: one standard deviation of the shuffle spread.
+aggregations of the same statistic, on three corpora. Conditioning on sequence
+family (right) rescues the statistic on the two species-balanced corpora --
+Spearman +0.714 and +1.000, against +0.381 and +0.900 corpus-wide -- and does
+not rescue it on the unselected corpus, where it reaches +0.200 against
++0.000. On that corpus the bound and the measurement are anti-correlated
+through class balance (Pearson -0.93 between label entropy and measured gain):
+the thresholds it rates highest are the ones that split a Swiss-Prot-derived
+corpus evenly by separating organisms annotated at 37 degrees C from
+everything else. The 35 degrees C threshold on the primary corpus, labelled in
+both panels, is the same failure in its milder form. Error bars: one standard
+deviation of the shuffle spread.
 
 **Figure 2** (`figure2_bound_vs_threshold`) -- the bound against threshold for
 three corpora on shared axes, each peak ringed and labelled, with the
@@ -903,20 +992,22 @@ class loses four fifths of its mass to Swiss-Prot's 37 degrees C pile-up. The
 peak's location is a joint property of the corpus and the sampling design.
 
 **Figure 3** (`figure3_measured_vs_threshold`) -- measured gain against
-threshold for the three trained configurations, with the primary corpus's
-plateau shaded. Carries 5.1, 5.2b and 5.2c, and it is the most quotable figure
-in the paper. Note when writing the caption that the second corpus and
-progen2-small were run at a subset of the thresholds, so their line segments
-join measured points across gaps and are not interpolations of anything
-measured.
+threshold for all four trained configurations, with the primary corpus's
+plateau shaded. Carries 5.1, 5.2b, 5.2c and 5.2d, and it is the most quotable
+figure in the paper: it is the one result that holds everywhere. Note when
+writing the caption that three of the four were run at a subset of the
+thresholds, so their line segments join measured points across gaps and
+interpolate nothing.
 
-*Caption.* Measured conditioning gain against binning threshold. The interior
-plateau reproduces on a second corpus built from a different
-growth-temperature database and sequence source, and the ordering of
-thresholds reproduces on a backbone five times smaller. Cold thresholds cost a
-factor of 3.9 on the primary corpus and 3.8 on the second. Lines join measured
-points; the second corpus and progen2-small were run at a subset of the
-thresholds. Error bars: one standard deviation of the shuffle spread.
+*Caption.* Measured conditioning gain against binning threshold, on three
+corpora and two backbones. Cold thresholds cost a factor of 3.9 to 4.2 of the
+gain available higher up, in every configuration tested; the ordering of
+thresholds reproduces on a backbone five times smaller. The shape above the
+cold end differs by corpus: an interior plateau on the two species-balanced
+corpora, and a monotonic rise to 60 degrees C on the unselected one, whose
+temperature distribution piles up at 37. Lines join measured points and
+interpolate nothing. Error bars: one standard deviation of the shuffle
+spread.
 
 ## Citations to collect
 
@@ -949,32 +1040,32 @@ no independent replication was found; cite them as reported.
 
 ## What is missing before submission
 
-Status 2026-11-01. **No experiment in the plan is outstanding and no further
-GPU time is needed for the paper as scoped.** Prose and figures are done; what
-remains is one open question and the mechanics of submission:
+Status 2026-11-01, after all seventeen runs. **Every experiment in the plan has
+been run, including the one that closed section 5.1c's open problem -- against
+the measure.** No further GPU time is needed. What remains:
 
-- **Prose for sections 1-4 and 7-8.** Written 2026-11-01. What is left in them
-  is a pass for length and for the venue's citation style, not content.
-- **Figures.** Three, generated by `scripts/17_figures.py`, with draft captions
-  in the Figures section below. Figure 3 was promoted from "if affordable" to
-  the paper's most quotable panel once the second corpus and the second
-  backbone landed on it.
-- **A decision on the open problem of 5.1c.** One experiment would settle it:
-  three or four runs on the *uncapped* external corpus, spanning 30 to 60
-  degrees C, where the within-cluster statistic and `-abs(edge - 55)` genuinely
-  disagree about which threshold is best -- unlike the design-matched corpus,
-  where it turned out they barely disagree at all. Roughly $9-12 of A10 time
-  plus a Cas9 screen and a split assignment, both CPU-only. Either run it or
-  state the limitation and submit; do not restate the pre-registered test of
-  5.2b as though it had resolved this.
+- **A pass over sections 1-4 and 7-8 for length and citation style.** The
+  content is written; sections 1 and 8 were rewritten after 5.2d landed and
+  should be re-read once more as a pair, since they are where a reader decides
+  what the paper claims.
+- **Decide the framing explicitly.** The paper now reports a measure that
+  fails a pre-registered test against a trivial baseline. That is publishable
+  and arguably more useful than a positive result, but the title, abstract and
+  introduction must agree on it. The current title still asks "how much can a
+  growth-temperature label help?", which the paper does answer; a title
+  promising a working bound would not survive section 5.2d.
+- **Nothing in the results is pending.** Figures regenerate from committed
+  files via `scripts/17_figures.py`.
 
-Spend so far is about $35 of A10 time against the $31 estimated, the difference
-being that the runs at 2.6 h each cost more than the round numbers suggested.
+Spend: roughly $49 of A10 time against the $31 originally estimated, over
+seventeen runs.
 
-The experiment that would be worth designing beyond that is a third corpus with
-a genuinely independent growth-temperature measurement rather than another
-culture-collection scrape, and a second architecture family for 5.2c. Neither
-is reachable on this budget. Note both as future work.
+Future work, flagged and not claimed: a corpus with a growth-temperature
+measurement independent of the culture-collection catalogues that Gosha and
+Engqvist both scrape; a second architecture family, to turn 5.2c from a
+capacity comparison into an architecture-independence result; and a
+balance-corrected statistic, which 5.2d makes the obvious next candidate but
+which this paper does not propose or test.
 
 ## Revision history
 
@@ -1018,3 +1109,32 @@ second backbone, and the corpus statistics beat the baseline on magnitude
 (Pearson +0.98 and +0.97 against +0.83) if not on rank.
 
 Analysis in `results/ceiling_sweep_20261030/external_measured.md`.
+
+**2026-11-01, after the uncapped-corpus runs.** The pre-registered test in
+section 5.2d **failed**, and the paper changed shape rather than wording. On a
+corpus chosen in advance so that the predictors disagree -- Spearman 0.0
+between the corpus-wide bound and `-abs(edge - 55)` over the four edges, a
+check that was performed before launch this time -- the baseline ranked the
+four label definitions perfectly (+1.000, exact p = 0.042, the smallest
+attainable at n=4) and the corpus-wide statistic ranked them no better than
+chance (+0.000). The pre-registered primary comparison was negative at 6.6 and
+7.1 sigma on the two splits. Neither void condition was met.
+
+The abstract, section 1, 5.1b, 5.1c, 5.2d, 6.1, 6.4, 8 and the figure spec
+were rewritten. Claims removed, in addition to those listed above:
+
+- "a corpus statistic predicts which label definition is better" without a
+  corpus-design qualifier -- it does so on the two species-balanced corpora
+  and not on the unselected one
+- "conditioning on family removes most of the balance artifact" as a general
+  statement -- it does so on corpora built like ours, and on the unselected
+  corpus both aggregations correlate +0.40 with label entropy while measured
+  gain correlates -0.80 with it
+- any framing of 5.1c as an open problem rather than a result
+
+What survived, and is now stronger for resting on three corpora and two
+backbones: label definition is worth 3.9x to 4.2x in measured conditioning
+gain; cold thresholds are poor everywhere; the sampling-design result; the
+granularity failure; and the Cas9 negative case.
+
+Analysis in `results/ceiling_sweep_20261030/uncapped_measured.md`.

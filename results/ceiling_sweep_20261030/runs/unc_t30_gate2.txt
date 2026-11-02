@@ -1,0 +1,17 @@
+perplexity with the correct growth-temperature token: 3.3154
+perplexity with shuffled tokens: 3.3165 (mean of 5)
+  individual shuffles: 3.3166, 3.3164, 3.3166, 3.3166, 3.3166
+relative gain: +0.035%
+
+is the effect real?
+  beats every shuffle   True
+  z vs shuffle spread   10.9  (required 3.0; spread 0.000105)
+  -> SIGNIFICANT
+
+is the effect large, given what the corpus allows?
+  corpus ceiling        +0.113% (scripts/13_conditioning_ceiling.py)
+  gain / ceiling        0.31x  (required 0.50x)
+  -> TOO SMALL
+
+GATE 2 FAILED
+The conditioning is real but small: the effect is statistically unambiguous and still under its share of what this corpus makes available. More training steps are the wrong response if the conditioning curve has plateaued -- the question is whether the token has enough leverage on the model, not whether it has had enough time.

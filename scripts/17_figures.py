@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import re
+from itertools import permutations
 from pathlib import Path
 
 import matplotlib
@@ -49,7 +50,11 @@ SWEEPS = {
     "primary": RESULTS / "external_corpus_20261029" / "sweep_pretrain.txt",
     "external": (RESULTS / "external_corpus_20261029"
                  / "sweep_external_balanced_screened.txt"),
-    "uncapped": RESULTS / "external_corpus_20261029" / "sweep_external.txt",
+    # Post-screen, because this corpus became training data on 2026-11-01 and
+    # the screen changed cluster membership. sweep_external.txt is the
+    # pre-screen version and is superseded for every trained comparison.
+    "uncapped": (RESULTS / "external_corpus_20261029"
+                 / "sweep_external_screened.txt"),
 }
 BATCH1 = RESULTS / "ceiling_sweep_20261027" / "runs"
 BATCH2 = RESULTS / "ceiling_sweep_20261030" / "runs"
@@ -71,16 +76,20 @@ RUNS = {
         30: (BATCH2, "small_t30"), 55: (BATCH2, "small_t55"),
         75: (BATCH2, "small_t75"),
     },
+    "uncapped": {
+        30: (BATCH2, "unc_t30"), 35: (BATCH2, "unc_t35"),
+        45: (BATCH2, "unc_t45"), 60: (BATCH2, "unc_t60"),
+    },
 }
 # The four-class granularity variant. Its bound is the primary corpus's
 # four-class row, which is not comparable to a threshold's (section 6.2), so it
 # appears once, marked, in the left panel only.
 C4_RUN = (BATCH1, "sweep_c4")
 
-# Spearman and exact permutation p for the primary corpus's eight thresholds,
-# from results/ceiling_sweep_20261030/measured_n8.md. Printed on figure 1 so a
-# reader is not asked to carry them from the text.
-STATS = {"corpus": (0.381, 0.180), "within": (0.714, 0.029)}
+# Figure 1 prints a rank correlation per corpus per panel. They are computed
+# here from the same points that are plotted, rather than transcribed from the
+# analysis files, so a figure cannot show one number and state another. The
+# analysis files are the check: tests/test_figures.py asserts these agree.
 
 # Colour-blind-safe, and separable in greyscale by marker.
 INK = "#1a1a1a"
@@ -94,10 +103,47 @@ COLOURS = {
 MARKERS = {"primary": "o", "external": "s", "small": "^", "uncapped": "D"}
 LABELS = {
     "primary": "primary corpus, progen2-base",
-    "external": "second corpus, progen2-base",
+    "external": "design-matched corpus, progen2-base",
     "small": "primary corpus, progen2-small",
-    "uncapped": "external, uncapped",
+    "uncapped": "uncapped corpus, progen2-base",
 }
+
+def _rank(xs):
+    order = sorted(range(len(xs)), key=lambda i: xs[i])
+    out = [0.0] * len(xs)
+    i = 0
+    while i < len(order):
+        j = i
+        while j + 1 < len(order) and xs[order[j + 1]] == xs[order[i]]:
+            j += 1
+        for k in range(i, j + 1):
+            out[order[k]] = (i + j) / 2 + 1
+        i = j + 1
+    return out
+
+
+def _pearson(a, b):
+    ma, mb = sum(a) / len(a), sum(b) / len(b)
+    num = sum((x - ma) * (y - mb) for x, y in zip(a, b, strict=True))
+    den = (sum((x - ma) ** 2 for x in a) * sum((y - mb) ** 2 for y in b)) ** 0.5
+    return num / den if den else 0.0
+
+
+def spearman(a, b):
+    return _pearson(_rank(a), _rank(b))
+
+
+def exact_p(pred, measured):
+    """One-sided p over every relabeling of the measured column.
+
+    Exact rather than asymptotic because n is 4 to 8, where the usual
+    t-approximation to Spearman's null is not trustworthy.
+    """
+    observed = spearman(pred, measured)
+    perms = list(permutations(measured))
+    hits = sum(1 for perm in perms if spearman(pred, perm) >= observed - 1e-12)
+    return observed, hits / len(perms)
+
 
 _SWEEP_ROW = re.compile(
     r"^\s*(\d+)\s+([\d.]+)%\s+\+?([\d.]+)%\s+\+?([\d.]+)%")
@@ -187,49 +233,61 @@ def _style() -> None:
 
 
 def figure1(data: dict, outdir: Path, ext: str) -> Path:
-    fig, axes = plt.subplots(1, 2, figsize=(6.8, 3.2), sharey=True)
+    """The same statistic against measured gain, per aggregation, per corpus.
+
+    The message is the corpus dependence: within-cluster ranks label
+    definitions on the two species-balanced corpora and not on the unselected
+    one, where the statistic and the measurement are anti-correlated through
+    class balance.
+    """
+    fig, axes = plt.subplots(1, 2, figsize=(7.0, 3.6), sharey=True)
+    corpora = ("primary", "external", "uncapped")
     panels = (
-        ("corpus", 0, "corpus-wide: does not predict the ordering"),
-        ("within", 1, "within-cluster: predicts the ordering"),
+        ("corpus-wide", 0),
+        ("within-cluster (conditioned on family)", 1),
     )
-    for ax, (key, col, title) in zip(axes, panels, strict=True):
-        for cfg in ("primary", "external"):
+    for ax, (title, col) in zip(axes, panels, strict=True):
+        lines = []
+        for cfg in corpora:
             bounds, gains = data["bounds"][cfg], data["gains"][cfg]
-            xs = [bounds[e][col] for e in sorted(gains)]
-            ys = [gains[e]["val"][0] for e in sorted(gains)]
-            errs = [gains[e]["val"][1] for e in sorted(gains)]
+            edges = sorted(gains)
+            xs = [bounds[e][col] for e in edges]
+            ys = [gains[e]["val"][0] for e in edges]
+            errs = [gains[e]["val"][1] for e in edges]
             ax.errorbar(xs, ys, yerr=errs, fmt=MARKERS[cfg], ms=4.4, lw=0,
                         elinewidth=0.7, capsize=1.6, color=COLOURS[cfg],
                         label=LABELS[cfg].replace(", progen2-base", ""),
                         zorder=3)
-        # 35 C is the point that moves most between the panels, and the
-        # mechanism in section 5.1b is about it.
+            rho, pval = exact_p(xs, ys)
+            lines.append((cfg, f"{rho:+.3f}  (p = {pval:.3f}, n = {len(xs)})"))
+        if col == 0:
+            (c4_corpus, _), c4_gain = data["c4"]
+            ax.plot([c4_corpus], [c4_gain["val"][0]], "v", ms=5, color=MUTED,
+                    zorder=3, label="4 classes (not comparable; 6.2)")
+        # Per-corpus rho, coloured to its series: the whole point of the
+        # figure is that one number does not describe all three.
+        for i, (cfg, text) in enumerate(lines):
+            ax.text(0.03, 0.97 - 0.075 * i, text, transform=ax.transAxes,
+                    va="top", ha="left", fontsize=7, color=COLOURS[cfg])
+        # 35 C on the primary corpus is the point that moves most between the
+        # panels, and the mechanism in section 5.1b is about it.
         x35 = data["bounds"]["primary"][35][col]
         y35 = data["gains"]["primary"][35]["val"][0]
         ax.annotate("35 C", (x35, y35), textcoords="offset points",
                     xytext=(0, 11), fontsize=7, color=INK, ha="center",
                     va="bottom",
                     arrowprops=dict(arrowstyle="-", lw=0.5, color=INK))
-        if key == "corpus":
-            (c4_corpus, _), c4_gain = data["c4"]
-            ax.plot([c4_corpus], [c4_gain["val"][0]], "v", ms=5,
-                    color=MUTED, zorder=3,
-                    label="4 classes (not comparable; 6.2)")
-        rho, p = STATS[key]
-        ax.text(0.03, 0.96, f"$\\rho$ = {rho:+.3f}\np = {p:.3f}",
-                transform=ax.transAxes, va="top", ha="left", fontsize=7.5,
-                color=INK)
-        ax.set_xlabel(f"{key.replace('corpus', 'corpus-wide')} bound (%)"
-                      if key == "corpus" else "within-cluster bound (%)")
-        ax.set_title(title, color=INK)
+        ax.set_xlabel(f"{title} bound (%)")
         ax.legend(loc="lower right")
     axes[0].set_ylabel("measured conditioning gain, validation (%)")
+    axes[0].set_title("corpus-wide", color=INK)
+    axes[1].set_title("within-cluster", color=INK)
     fig.text(0.5, -0.07,
-             "$\\rho$ and p are the primary corpus's eight thresholds, exact "
-             "permutation test over all 40,320 relabelings; the second "
-             "corpus's five\nare overplotted for scale and scored separately "
-             "in section 5.2b. Error bars: one standard deviation of the "
-             "shuffle spread.",
+             "Spearman and exact permutation p, computed over each corpus's "
+             "own thresholds; error bars are one standard deviation of the "
+             "shuffle spread. Conditioning on family\nrescues the statistic "
+             "on the two species-balanced corpora and not on the unselected "
+             "one, where it is anti-correlated with measured gain (5.2d).",
              ha="center", fontsize=6.4, color=MUTED)
     path = outdir / f"figure1_bound_vs_measured.{ext}"
     fig.savefig(path)
@@ -282,7 +340,7 @@ def figure2(data: dict, outdir: Path, ext: str) -> Path:
 
 def figure3(data: dict, outdir: Path, ext: str) -> Path:
     fig, ax = plt.subplots(figsize=(4.6, 3.1))
-    for cfg in ("primary", "external", "small"):
+    for cfg in ("primary", "external", "small", "uncapped"):
         gains = data["gains"][cfg]
         edges = sorted(gains)
         ys = [gains[e]["val"][0] for e in edges]

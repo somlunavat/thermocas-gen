@@ -15,14 +15,16 @@ not fetched them.
 from __future__ import annotations
 
 import importlib.util
-import re
 from pathlib import Path
 
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / "scripts" / "17_figures.py"
-ANALYSIS = REPO_ROOT / "results" / "ceiling_sweep_20261030" / "measured_n8.md"
+_RESULTS = REPO_ROOT / "results" / "ceiling_sweep_20261030"
+ANALYSIS = _RESULTS / "measured_n8.md"
+EXTERNAL = _RESULTS / "external_measured.md"
+UNCAPPED = _RESULTS / "uncapped_measured.md"
 
 
 def load_script():
@@ -88,25 +90,57 @@ class TestAgreementWithTheWriteUp:
     """Each figure illustrates one analysis file; if they disagree, the figure
     is the one a reader believes."""
 
-    def test_the_printed_statistics_match_measured_n8(self, figures):
-        if not ANALYSIS.is_file():
-            pytest.skip("measured_n8.md not present")
+    @pytest.mark.parametrize(
+        "config,col,rho,pval,source",
+        [
+            ("primary", 0, 0.381, 0.180, ANALYSIS),
+            ("primary", 1, 0.714, 0.029, ANALYSIS),
+            ("external", 0, 0.900, 0.042, EXTERNAL),
+            ("external", 1, 1.000, 0.008, EXTERNAL),
+            ("uncapped", 0, 0.000, 0.542, UNCAPPED),
+            ("uncapped", 1, 0.200, 0.458, UNCAPPED),
+        ],
+    )
+    def test_figure_one_computes_the_published_correlations(
+        self, figures, data, config, col, rho, pval, source
+    ):
+        """Figure 1 computes its own Spearman from the points it plots, so the
+        figure cannot show one number while the text states another. These
+        expected values are the ones the analysis files report; the next test
+        checks they are still in those files."""
+        gains = data["gains"][config]
+        bounds = data["bounds"][config]
+        edges = sorted(gains)
+        xs = [bounds[e][col] for e in edges]
+        ys = [gains[e]["val"][0] for e in edges]
+        got_rho, got_p = figures.exact_p(xs, ys)
+        assert got_rho == pytest.approx(rho, abs=5e-4)
+        assert got_p == pytest.approx(pval, abs=5e-4)
+
+    @pytest.mark.parametrize(
+        "path,needles",
+        [
+            (ANALYSIS, ("+0.381", "+0.714")),
+            (EXTERNAL, ("+0.900", "+1.000")),
+            (UNCAPPED, ("+0.000", "+0.200")),
+        ],
+    )
+    def test_the_analysis_files_still_report_them(self, path, needles):
+        if not path.is_file():
+            pytest.skip(f"{path.name} not present")
             return
-        text = ANALYSIS.read_text()
-        for key, row in (("corpus", r"\| corpus-wide ceiling \|"),
-                         ("within", r"\| \*\*within-cluster ceiling\*\* \|")):
-            m = re.search(row + r"\s*\*{0,2}\+([\d.]+)\*{0,2}\s*\|"
-                          r"\s*\*{0,2}([\d.]+)\*{0,2}\s*\|", text)
-            assert m, key
-            rho, p = figures.STATS[key]
-            assert float(m.group(1)) == pytest.approx(rho)
-            assert float(m.group(2)) == pytest.approx(p)
+        text = path.read_text()
+        for needle in needles:
+            assert needle in text, f"{needle} missing from {path.name}"
 
     @pytest.mark.parametrize(
         "config,edge,expected",
         [("primary", 50, 0.296), ("primary", 30, 0.037),
          ("external", 65, 0.449), ("external", 30, 0.110),
-         ("small", 55, 0.200)],
+         ("small", 55, 0.200),
+         # The pre-registered primary comparison of section 5.2d: 35 C must
+         # come out below 60 C, which is the result the paper turns on.
+         ("uncapped", 35, 0.065), ("uncapped", 60, 0.148)],
     )
     def test_headline_gains(self, data, config, edge, expected):
         """The measured optima and cold ends, which the text quotes."""

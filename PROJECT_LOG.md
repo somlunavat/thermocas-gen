@@ -2095,3 +2095,62 @@ tool.
 Spend: roughly $49 all in, against the $31 originally estimated and the
 $9–12 I quoted for this batch before noticing it needed the larger Gate 2
 subsample and the full 11,263-sequence test split.
+
+## 2026-11-01 — The pre-registered test failed: the baseline wins
+
+All four uncapped-corpus runs finished. `unc_t30` and `unc_t35` exited 3 —
+Gate 2 failures, on the size criterion, which is part of the result rather
+than a problem with the runs.
+
+| edge | thermo% | H(bin) | bound | val gain | test gain | gain/bound |
+|---|---|---|---|---|---|---|
+| 30 | 68.8% | 0.6205 | +0.113% | +0.035% | +0.038% | 0.31x |
+| 35 | 49.4% | 0.6931 | +0.148% | +0.065% | +0.061% | 0.44x |
+| 45 | 9.2% | 0.3080 | +0.100% | +0.120% | +0.137% | 1.20x |
+| 60 | 6.4% | 0.2386 | +0.115% | +0.148% | +0.119% | 1.29x |
+
+**Primary outcome, pre-registered: negative on both splits, at 6.6 and 7.1
+sigma.** gain@35 − gain@60 is −0.083 pp on validation and −0.058 pp on test.
+The corpus statistics predicted positive; the baseline predicted negative.
+
+Secondary: `-abs(edge − 55)` scores Spearman **+1.000** (exact p = 0.042, the
+smallest attainable at n=4) against the corpus-wide bound's **+0.000** and the
+within-cluster bound's +0.200.
+
+Neither void condition was met, and the letter of them is what matters. The
+gains span 0.113 pp against a largest two-sigma of 0.025 pp, and every run
+cleared significance at z between 10.9 and 40.7. The two Gate 2 failures were
+on the *size* criterion, which condition (ii) does not name — it names
+significance. It would have been easy to read "failed Gate 2" as voiding an
+unfavourable test, and writing the condition down precisely beforehand is the
+only reason that reading is unavailable now. That is the strongest argument
+for the pre-registration discipline that this project has produced.
+
+The mechanism is class balance, and it is the same one §5.1b identified on the
+primary corpus — except that here family conditioning does not fix it. Both
+bounds correlate +0.40 with H(bin); measured gain correlates −0.80 (val) and
+−0.60 (test), Pearson −0.926. At 30 and 35 C the corpus is 69% and 49%
+thermophilic, but the hot class is Swiss-Prot's 37 C organisms: the label is
+perfectly balanced and semantically empty, separating "37 C" from "not 37 C".
+The histogram sees a big composition difference; the model finds 0.31x and
+0.44x of it usable, the two worst ratios in the project.
+
+So §5.1b narrows: conditioning on family mitigates the balance artifact on
+corpora built with per-species capping and species balancing, which break up
+exactly this kind of pile-up, and not on a corpus assembled without them.
+
+The paper changed shape rather than wording. The abstract now says the
+denominator does not work well enough to recommend and that establishing that
+carefully is the point; §5.1c is a result rather than an open problem; §8 says
+plainly not to use the statistic to choose a threshold, and recommends
+reporting H(bin) beside any gain-over-bound figure so the inflation is
+visible. What survives — label definition worth 3.9x–4.2x, cold thresholds
+poor everywhere, the sampling-design result, the granularity failure, the Cas9
+negative case — now rests on three corpora and two backbones.
+
+Figure 1 was rebuilt to compute its own Spearman and exact p from the points
+it plots, per corpus per panel, so it cannot show one number while the text
+states another; the per-corpus spread (+0.38/+0.90/+0.00 corpus-wide,
++0.71/+1.00/+0.20 within-cluster) is now the figure's message. Its computed
+values reproduced the independent analysis exactly, which is the cross-check
+that matters.
