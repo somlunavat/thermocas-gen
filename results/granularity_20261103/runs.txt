@@ -1,0 +1,23 @@
+Granularity series, launched 2026-11-03, pre-registered in paper/draft.md
+section 5.2e (commit 291d576, immediately before these launches).
+
+Corpus: pretrain (primary, Gosha, capped + balanced). Relabeling only --
+byte-identical sequences, clusters and splits across all four. Primary
+backbone, stage A, 3,000 steps, A10G, Gate 2 on 2,000 validation sequences,
+five shuffles. Edges maximise the smallest class's share of residues.
+
+run      k  edges                     min class  bound      call id
+gran_k2  2  37                        41.6%      +0.1983%   fc-01M6HK53JAZ71WC0X0C4QC8VCM
+gran_k4  4  32,45,60                  19.5%      +0.3724%   fc-01M6HK56W9JNR7E65QPMGZ9MQZ
+gran_k6  6  30,32,45,55,67            10.8%      +0.4881%   fc-01M6HK5AD61W4GZ1P5DJTFD3WQ
+gran_k9  9  29,32,45,49,53,56,67,83   5.5%       +0.4963%   fc-01M6HK5DQ8ERNGH31561P2RR3F
+
+Reports land at checkpoints/stage_a/<run>/{gate2,test}_report.txt on volume
+thermocas-gen-vol.
+
+Note on comparability with the 2026-10-27 batch: sweep_t45 and sweep_c4 scored
+2,000 of the 16,952 test sequences, because the test cap followed the Gate 2
+limit in the code of that date. These four score the full test split. The
+series is internally consistent, which is what the pre-registered outcome
+needs; the 10/27 runs are used only as the prior that motivated the
+prediction, not as members of the series.
