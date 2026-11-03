@@ -1,0 +1,39 @@
+
+=== label envelope: external_balanced ===
+63 distinct growth temperatures, 11,080,239 residues
+
+Mutual information cannot fall when the label partition is refined,
+so the unbinned row is an upper bound on every binning of this
+corpus's labels -- threshold, quantile or otherwise.
+
+The rows between are NOT nested: equal-residue-mass edges for k and
+k+1 classes are different partitions, not a refinement of one
+another, so this column can dip. A dip is a property of the
+quantile scheme, not a violation of monotonicity and not an error.
+
+ classes       raw  corrected      bias  % of envelope
+       2  +0.274%   +0.274%  +0.000%         28.3%
+       3  +0.412%   +0.412%  +0.000%         42.5%
+       4  +0.425%   +0.425%  +0.000%         43.8%
+       5  +0.432%   +0.432%  +0.000%         44.5%
+       6  +0.513%   +0.512%  +0.000%         52.8%
+       7  +0.508%   +0.508%  +0.001%         52.4%
+       8  +0.518%   +0.518%  +0.001%         53.4%
+       9  +0.569%   +0.568%  +0.001%         58.6%
+      10  +0.543%   +0.543%  +0.001%         56.0%
+      11  +0.511%   +0.510%  +0.001%         52.6%
+      12  +0.568%   +0.567%  +0.001%         58.4%
+      13  +0.543%   +0.542%  +0.001%         55.9%
+      14  +0.576%   +0.575%  +0.001%         59.3%
+      15  +0.673%   +0.671%  +0.001%         69.3%
+      16  +0.674%   +0.673%  +0.001%         69.4%
+      63  +0.975%   +0.970%  +0.005%        100.0%  <- unbinned, the envelope
+
+A two-class threshold reaches 28.3% of the envelope.
+The conventional labelling therefore leaves a factor of 3.5 on the table -- not in measured gain,
+which section 5.1 shows is a different and smaller quantity, but in
+what the corpus makes available to any label at all.
+
+Bias is the Miller-Madow correction, (|R|-1)(|B|-1)/2N nats,
+converted to the same percentage units. It grows with the number of
+classes, which is why the envelope row needs it most.
