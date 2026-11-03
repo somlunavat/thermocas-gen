@@ -48,10 +48,11 @@ of a label in perplexity units on the corpus the model trains on; at a
 database's native temperature resolution it bounds every coarser binning of
 that database's labels, because mutual information cannot fall when a partition
 is refined. Across three prokaryotic corpora that envelope is +0.49% to +0.97%
-in perplexity, and the two-class threshold every surveyed system uses reaches
-only 23% to 30% of it. The estimate is unigram, so it is a lower bound on what
-a contextual model extracts and not a ceiling on it: ten of our sixteen runs
-exceed their own, by up to 1.56x.
+in perplexity, the best two-class threshold reaches only 28% to 30% of it, and
+a floor of 5% of residues per class -- below which a control token is too rare
+to train on -- caps what any binning can reach at 67% to 75%. The estimate is
+unigram, so it is a lower bound on what a contextual model extracts and not a
+ceiling on it: ten of our sixteen runs exceed their own, by up to 1.56x.
 We then measure what a model actually extracts, in seventeen GPU runs that
 differ only in how the label is defined -- byte-identical sequences, clusters
 and splits, so the comparison isolates label definition from corpus
@@ -121,7 +122,8 @@ same quantity evaluated at a temperature database's native resolution
 upper-bounds *every* binning of that database's labels -- an envelope against
 which any particular choice can be read. On three prokaryotic corpora that
 envelope is +0.49% to +0.97% in perplexity, and the two-class threshold used
-by every system in section 2 reaches 23% to 30% of it.
+by every system in section 2 reaches 28% to 30% of it, and no binning with
+trainable class sizes reaches more than 75%.
 
 To find out, we hold everything except the label fixed. Our sweep variants are
 *relabelings*: `temp_bin` is recomputed from the recorded growth temperature in
@@ -425,23 +427,52 @@ sharply outside it, to +0.070% averaged over 30 and 35 degrees C. That is a
 factor of 3.9 from label definition alone, on byte-identical sequences. Test
 gains track validation within 0.03 pp at every threshold.
 
-### 5.1b The envelope: a two-class threshold reaches a quarter of it
+### 5.1b The envelope, and how much of it anyone could train on
 
-The sweeps above vary the threshold. This varies the *granularity*, up to the
-limit, and gives the number a group with a corpus and no GPU budget can
-compute: how much a growth-temperature label could be worth here at best.
+The sweeps above vary the threshold. This varies the *granularity*, and gives
+the number a group with a corpus and no GPU budget can compute: how much a
+growth-temperature label could be worth here at best.
 
-| corpus | distinct OGTs | residues | 2-class | envelope | 2-class share |
+Mutual information cannot fall when a label partition is refined, so
+I(residue; OGT) at a database's native temperature resolution bounds every
+coarser binning of that database's labels. That is the corpus's envelope.
+
+| corpus | distinct OGTs | residues | best 2-class | envelope | 2-class share |
 |---|---|---|---|---|---|
-| primary (Gosha, capped + balanced) | 47 | 113.8M | +0.154% | **+0.661%** | 23.4% |
+| primary (Gosha, capped + balanced) | 47 | 113.8M | +0.198% | **+0.661%** | 30.0% |
 | external, design-matched | 63 | 11.1M | +0.274% | **+0.970%** | 28.3% |
 | external, uncapped | 77 | 64.9M | +0.148% | **+0.488%** | 30.4% |
 
-**The two-class threshold that every system in section 2 uses reaches 23% to
-30% of what the corpus makes available to a label.** That holds across three
-corpora, two growth-temperature databases, and a threefold range of absolute
-envelopes. Miller-Madow corrections are 0.000, 0.005 and 0.000 percentage
-points respectively.
+**The best two-class threshold reaches 28% to 30% of what the corpus makes
+available to a label**, across three corpora, two growth-temperature databases
+and a twofold range of absolute envelopes. Miller-Madow corrections are 0.000,
+0.005 and 0.000 percentage points. These are the *best* two-class edges on
+each corpus, found by maximising the smaller class's share of residues; a
+threshold chosen for biological convention rather than for the corpus does
+worse, which is what section 5.1 measures.
+
+**Most of the remaining gap is not available to any label anyone could train
+on.** Refinement raises the bound by putting mass in narrow temperature
+classes, and a class holding a few hundred sequences is a control token the
+model sees too rarely to use. Requiring every class to hold at least 5% of the
+corpus's residues -- a floor, not a tuned value -- bounds the granularity:
+
+| corpus | largest trainable k | best reachable bound | share of envelope |
+|---|---|---|---|
+| primary | 9 | +0.496% | 75.1% |
+| external, design-matched | 13 | +0.645% | 66.5% |
+| external, uncapped | 11 | +0.341% | 69.9% |
+
+So the honest version of the gap is **a factor of 2.3 to 2.5 between the best
+two-class threshold and the best trainable multi-class binning**, not the 3.3
+to 4.3 the envelope alone suggests. A quarter to a third of the envelope sits
+in bins that exist only in the arithmetic.
+
+**It also saturates early.** On the primary corpus five classes already reach
++0.462% (69.9% of the envelope) and nine reach +0.496% (75.1%); the four
+additional classes buy 0.034 percentage points. The actionable form of this
+table is therefore *four to six classes*, not *as many as possible*, and that
+is a change any of the six systems in section 2 could make for free.
 
 Two cautions belong with this table, both in the text and not in a footnote.
 
@@ -450,14 +481,22 @@ predictor could take from the label; it says nothing about what a trained
 model will. Our one granularity run reached +0.248% against a four-class bound
 of +0.374%, which is 0.66x, and section 6.2 shows this measure cannot rank
 granularities against each other at all. "Use more classes" does not follow
-from this table and we do not claim it.
+from this table on its own; section 5.2e tests it, having been written before
+those runs were launched.
 
-**The intermediate rows are not nested.** Equal-residue-mass edges for k and
-k+1 classes are different partitions rather than refinements of one another,
-so the series can dip -- it does at six and eleven classes on the uncapped
-corpus. Monotonicity holds between a partition and its refinements, which is
-what makes the native-resolution row an upper bound on all of them; it does
-not hold along this particular sequence of binnings.
+**Equal-mass binning is not available on these corpora, and the quantile rows
+of the sweep are not nested.** A single recorded temperature can hold more
+residues than 1/k of the corpus -- 30 degrees C alone is 29.6% of the primary
+corpus and 37 degrees C is 18.5% -- and an atom cannot be split, so an
+equal-frequency scheme degenerates as k grows: at sixteen classes its smallest
+class is 0.1% of residues and 313 sequences. The tables above use
+minimum-mass-maximising partitions instead, computed by dynamic program over
+contiguous temperature intervals in `scripts/18_label_envelope.py`. Separately,
+equal-mass edges for k and k+1 classes are different partitions rather than
+refinements of one another, so such a series can dip; monotonicity holds
+between a partition and its refinements, which is what makes the
+native-resolution row an upper bound on all of them, and not along a sequence
+of re-derived binnings.
 
 ### 5.1c The statistic predicts it only when conditioned on family
 
@@ -765,6 +804,69 @@ because when half a corpus is 37 degrees C organisms a great many clusters are
 internally balanced at a 35 degrees C threshold for the same empty reason. The
 family-conditioned rescue is a property of corpus design, not of the
 aggregation.
+
+### 5.2e Does measured gain follow granularity? Pre-registered 2026-11-03
+
+**Written before these four runs were launched. No GPU time had been spent on
+any of them when this section was committed** (commit immediately preceding the
+launch commit; call ids in `results/granularity_20261103/runs.txt`).
+
+Section 5.1b says the reachable bound rises from +0.198% at two classes to
++0.496% at nine on the primary corpus, and saturates around five or six. It
+also says a bound is not a target. This tests whether a trained model follows
+it, on the one axis section 6.2 found the measure blind to.
+
+**Design.** Four runs on `pretrain`, differing only in `--bin-edges`.
+Byte-identical sequences, clusters and splits; the primary backbone; 3,000
+steps on an A10G; Gate 2 on validation and the full cluster-disjoint test
+split. Edges maximise the smallest class's share of residues, so no run is
+handicapped by a rare control token.
+
+| run | k | edges (C) | smallest class | reachable bound |
+|---|---|---|---|---|
+| `gran_k2` | 2 | 37 | 41.6% | +0.198% |
+| `gran_k4` | 4 | 32,45,60 | 19.5% | +0.372% |
+| `gran_k6` | 6 | 30,32,45,55,67 | 10.8% | +0.488% |
+| `gran_k9` | 9 | 29,32,45,49,53,56,67,83 | 5.5% | +0.496% |
+
+**Primary outcome, fixed now: the sign of (test gain at k=9) - (test gain at
+k=2).** The bound rises 2.5x across that span.
+
+*The prediction on record is that this difference is negative or within two
+standard deviations of zero* -- that measured gain does not follow granularity.
+The evidence for predicting it is the one comparison already in hand, on this
+same corpus and these same splits: `sweep_t45` (two classes, bound +0.154%)
+reached +0.251% on test, and `sweep_c4` (four classes, bound +0.374%) reached
++0.218%. The bound rose 2.4x and the measured gain fell.
+
+**What would refute the prediction.** A positive difference exceeding two
+standard deviations. That is the outcome that would make section 5.1b's
+reachable bound a target as well as a bound, and would turn its
+"four to six classes" into a measured recommendation rather than an
+arithmetic one. It is the outcome favourable to the paper's framing, which is
+why the direction is fixed here rather than after the fact.
+
+**Secondary.** Spearman between the reachable bound and measured test gain
+across the four runs, with an exact one-sided permutation p over all 4! = 24
+relabelings. At n=4 the smallest attainable p is 0.042 and only a perfect rank
+match reaches it, so this cannot establish agreement and is reported for the
+sign and nothing more.
+
+**Void conditions.** Only these two, and the letter of them is what counts --
+section 5.2d is the reason that sentence is here.
+
+(i) Any run failing Gate 2's **significance** criterion, z < 3 against the
+shuffle spread. A gain indistinguishable from zero cannot be ranked.
+
+(ii) Any run whose rarest control token is seen in fewer than 5% of the
+corpus's residues, which the edges above are chosen to prevent and which is
+recorded in the table so it can be checked rather than asserted.
+
+**A Gate 2 failure on the size criterion does not void this test**, and is
+expected under the prediction: `gain / bound` falls mechanically as the bound
+rises if measured gain does not follow it, and at k=9 a gain matching k=2's
++0.251% would score 0.51x. Reading a size failure as grounds to discard the
+test would be reading the unfavourable outcome as a malfunction.
 
 ### 5.3 Sampling design is half the measurement
 

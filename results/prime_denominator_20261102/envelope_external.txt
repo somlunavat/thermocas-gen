@@ -34,6 +34,39 @@ The conventional labelling therefore leaves a factor of 3.3 on the table -- not 
 which section 5.1 shows is a different and smaller quantity, but in
 what the corpus makes available to any label at all.
 
+=== reachable under a 5% minimum class mass ===
+
+Edges here maximise the smallest class's share of residues rather
+than aiming for equal shares, which the corpus cannot deliver: its
+largest single recorded temperature alone holds more than 1/k of all
+residues for every k above 3.
+
+ classes  min class  corrected  % of envelope  edges
+       2     49.4%   +0.148%         30.4%  35
+       3     31.2%   +0.196%         40.2%  30,37
+       4     18.5%   +0.204%         41.7%  29,32,37
+       5     14.9%   +0.220%         45.2%  28,30,34,37
+       6     10.1%   +0.257%         52.6%  27,29,31,35,37
+       7      9.9%   +0.315%         64.7%  27,29,31,35,37,38
+       8      7.9%   +0.331%         67.9%  26,28,30,31,35,37,38
+       9      7.4%   +0.338%         69.2%  26,28,29,30,31,35,37,38
+      10      6.8%   +0.338%         69.3%  26,28,29,30,31,34,36,37,38
+      11      5.0%   +0.341%         69.9%  23,27,28,29,30,31,34,36,37,38
+      12      4.9%   +0.365%         74.9%  23,27,28,29,30,31,33,36,37,38,67  <- below floor
+      13      4.3%   +0.381%         78.1%  22,27,28,29,30,31,33,35,36,37,38,67  <- below floor
+      14      3.2%   +0.388%         79.6%  21,26,28,29,30,31,32,35,36,37,38,58,75  <- below floor
+      15      3.0%   +0.392%         80.4%  21,26,28,29,30,31,32,34,35,36,37,38,58,75  <- below floor
+      16      2.9%   +0.394%         80.7%  21,26,27,28,29,30,31,32,34,35,36,37,38,58,75  <- below floor
+
+Largest trainable granularity: 11 classes.
+Best reachable bound: +0.341% at 11 classes (69.9% of the envelope,
+smallest class 5.0% of residues).
+
+So the gap between a two-class threshold and the envelope is not
+all available to a label anyone could train on. The remainder
+sits in classes of a few hundred sequences, and a bound computed
+there describes a partition, not an experiment.
+
 Bias is the Miller-Madow correction, (|R|-1)(|B|-1)/2N nats,
 converted to the same percentage units. It grows with the number of
 classes, which is why the envelope row needs it most.

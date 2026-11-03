@@ -77,6 +77,70 @@ def miller_madow(by_bin: dict[str, dict[str, int]]) -> float:
     return (len(residues) - 1) * (occupied_bins - 1) / (2 * total)
 
 
+def residue_mass(counts) -> list[tuple[float, int]]:
+    """(growth temperature, residues) ascending, one entry per recorded value."""
+    mass: dict[float, int] = collections.defaultdict(int)
+    for (_, ogt), residues in counts.items():
+        mass[ogt] += sum(residues.values())
+    return sorted(mass.items())
+
+
+def balanced_edges(counts, n_bins: int) -> tuple[float, ...]:
+    """Edges maximising the smallest class's share of residues.
+
+    `15_ceiling_sweep.quantile_edges` aims for equal residue mass and cannot
+    reach it here: a single recorded temperature can hold more mass than 1/k
+    of the corpus, and an atom cannot be split. On the primary corpus 30 C is
+    29.6% of all residues and 37 C is 18.5%, so from k=4 upward the quantile
+    scheme degenerates -- at k=16 its smallest class is 0.1% of residues and
+    313 sequences. A ceiling computed on that partition is real arithmetic on
+    a binning no one could train on.
+
+    This instead maximises min class mass over contiguous partitions, by the
+    standard dynamic program: best[g][i] is the largest achievable minimum
+    when the temperatures from i onward are cut into g classes. Contiguity is
+    not a convenience -- a growth-temperature class that is not an interval is
+    not a temperature class.
+
+    Returns k-1 edges, upper-exclusive like every other binning here.
+    """
+    ordered = residue_mass(counts)
+    masses = [m for _, m in ordered]
+    n = len(masses)
+    if n_bins < 2 or n_bins > n:
+        return ()
+    prefix = [0]
+    for m in masses:
+        prefix.append(prefix[-1] + m)
+
+    # best[g] maps a start index to (achievable minimum, cut indices).
+    best: list[dict[int, tuple[int, tuple[int, ...]]]] = [{} for _ in range(n_bins + 1)]
+    for i in range(n):
+        best[1][i] = (prefix[n] - prefix[i], ())
+    for g in range(2, n_bins + 1):
+        # A start index must leave at least g temperatures, one per class.
+        for i in range(0, n - g + 1):
+            chosen = (-1, ())
+            for j in range(i + 1, n - g + 2):
+                rest = best[g - 1].get(j)
+                if rest is None:
+                    continue
+                value = min(prefix[j] - prefix[i], rest[0])
+                if value > chosen[0]:
+                    chosen = (value, (j,) + rest[1])
+            best[g][i] = chosen
+    _, cuts = best[n_bins][0]
+    return tuple(ordered[j][0] for j in cuts)
+
+
+def min_class_share(counts, edges: tuple[float, ...]) -> float:
+    """Smallest class's share of residues under `edges`."""
+    pooled = SWEEP.pool(counts, edges)
+    sizes = [sum(c.values()) for c in pooled.values() if sum(c.values())]
+    total = sum(sizes)
+    return min(sizes) / total if total and sizes else 0.0
+
+
 def by_native_ogt(counts) -> dict[str, dict[str, int]]:
     """Pool to one class per distinct recorded growth temperature."""
     out: dict[str, dict[str, int]] = {}
@@ -109,6 +173,11 @@ def main() -> int:
     parser.add_argument(
         "--max-classes", type=int, default=16,
         help="largest equal-residue-mass binning to evaluate",
+    )
+    parser.add_argument(
+        "--floor", type=float, default=0.05,
+        help="smallest share of corpus residues a class may hold and still "
+             "count as trainable; partitions below it are reported and marked",
     )
     parser.add_argument("--out", type=Path, default=None)
     args = parser.parse_args()
@@ -186,6 +255,50 @@ def main() -> int:
         emit("which section 5.1 shows is a different and smaller quantity, "
              "but in")
         emit("what the corpus makes available to any label at all.")
+
+    # The quantile table above answers "what does refinement make available".
+    # It does not answer "what could anyone train on", because its own smallest
+    # class collapses as k grows. This second table holds class mass up and
+    # asks how much of the envelope survives that constraint.
+    emit()
+    emit(f"=== reachable under a {args.floor:.0%} minimum class mass ===")
+    emit()
+    emit("Edges here maximise the smallest class's share of residues rather")
+    emit("than aiming for equal shares, which the corpus cannot deliver: its")
+    emit("largest single recorded temperature alone holds more than 1/k of all")
+    emit("residues for every k above 3.")
+    emit()
+    emit(f"{'classes':>8} {'min class':>10} {'corrected':>10} "
+         f"{'% of envelope':>14}  edges")
+
+    feasible: list[tuple[int, float, float]] = []
+    for k in range(2, args.max_classes + 1):
+        edges = balanced_edges(counts, k)
+        if len(edges) < k - 1:
+            emit(f"{k:>8}  (corpus has too few distinct temperatures)")
+            break
+        share = min_class_share(counts, edges)
+        _, corrected, _, _ = report(SWEEP.pool(counts, edges))
+        mark = "" if share >= args.floor else "  <- below floor"
+        if share >= args.floor:
+            feasible.append((k, corrected, share))
+        emit(f"{k:>8} {share:>9.1%} {corrected:>+9.3%} "
+             f"{corrected / envelope_corrected:>13.1%}  "
+             f"{','.join(f'{e:g}' for e in edges)}{mark}")
+
+    if feasible:
+        best_k, best_gain, best_share = max(feasible, key=lambda row: row[1])
+        largest_k = max(k for k, _, _ in feasible)
+        emit()
+        emit(f"Largest trainable granularity: {largest_k} classes.")
+        emit(f"Best reachable bound: {best_gain:+.3%} at {best_k} classes "
+             f"({best_gain / envelope_corrected:.1%} of the envelope,")
+        emit(f"smallest class {best_share:.1%} of residues).")
+        emit()
+        emit("So the gap between a two-class threshold and the envelope is not")
+        emit("all available to a label anyone could train on. The remainder")
+        emit("sits in classes of a few hundred sequences, and a bound computed")
+        emit("there describes a partition, not an experiment.")
 
     emit()
     emit("Bias is the Miller-Madow correction, (|R|-1)(|B|-1)/2N nats,")

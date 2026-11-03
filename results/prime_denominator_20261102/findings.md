@@ -54,28 +54,71 @@ upper-bounds every binning of that database's labels. That number is the
 corpus's envelope, and it is the honest form of "how much can a
 growth-temperature label be worth here".
 
-| corpus | distinct OGTs | residues | 2-class bound | envelope | 2-class share | envelope / 2-class |
-|---|---|---|---|---|---|---|
-| primary (Gosha, capped + balanced) | 47 | 113.8M | +0.154% | **+0.661%** | 23.4% | 4.3x |
-| external, design-matched | 63 | 11.1M | +0.274% | **+0.970%** | 28.3% | 3.5x |
-| external, uncapped | 77 | 64.9M | +0.148% | **+0.488%** | 30.4% | 3.3x |
+| corpus | distinct OGTs | residues | best 2-class | envelope | 2-class share |
+|---|---|---|---|---|---|
+| primary (Gosha, capped + balanced) | 47 | 113.8M | +0.198% | **+0.661%** | 30.0% |
+| external, design-matched | 63 | 11.1M | +0.274% | **+0.970%** | 28.3% |
+| external, uncapped | 77 | 64.9M | +0.148% | **+0.488%** | 30.4% |
 
-**A two-class threshold -- which is what every system in section 2 uses --
-reaches 23% to 30% of what the corpus makes available to a label.** That is
-consistent across three corpora, two growth-temperature databases and a
-threefold range of absolute bounds.
+**The best two-class threshold -- which is the kind of label every system in
+section 2 uses -- reaches 28% to 30% of what the corpus makes available.** That
+is consistent across three corpora, two growth-temperature databases and a
+twofold range of absolute bounds.
 
-Miller-Madow bias correction, (|R|-1)(|B|-1)/2N nats, is reported in each
-sweep and is negligible at these corpus sizes: 0.000 pp on the two large
-corpora and 0.005 pp on the 11.1M-residue one, against envelopes of 0.5-1.0 pp.
+Miller-Madow bias correction, (|R|-1)(|B|-1)/2N nats, is reported in each sweep
+and is negligible at these corpus sizes: 0.000 pp on the two large corpora and
+0.005 pp on the 11.1M-residue one, against envelopes of 0.5-1.0 pp.
 Establishing that was necessary rather than optional, because the correction
 grows with exactly the refinement that raises the estimate, and the envelope
 row is the most refined one.
 
-The intermediate rows are not nested -- equal-residue-mass edges for k and
-k+1 classes are different partitions, not refinements -- so that column can
-dip, as it does at 6 and 11 classes on the uncapped corpus. This is a property
-of the quantile scheme and not a violation of monotonicity.
+## Correction, 2026-11-03: most of the gap is not trainable
+
+The first version of this file reported the two-class share as 23.4% / 28.3% /
+30.4% and a 3.3-4.3x gap to the envelope, using equal-residue-mass quantile
+edges. Both halves of that needed fixing.
+
+**The quantile scheme cannot deliver equal mass on these corpora.** A single
+recorded temperature can hold more residues than 1/k of the corpus: 30 C alone
+is 29.6% of the primary corpus's residues and 37 C is 18.5%. An atom cannot be
+split, so from four classes upward the scheme degenerates -- at sixteen classes
+its smallest class holds 0.1% of residues and 313 sequences. The intermediate
+rows of the original sweep were arithmetic on partitions nobody could train on,
+and the dips at six and eleven classes were that degeneration, not only the
+non-nesting the file already noted.
+
+`scripts/18_label_envelope.py` now also partitions to maximise the smallest
+class's share of residues, by dynamic program over contiguous temperature
+intervals, and reports which granularities clear a 5%-of-residues floor. Two
+consequences:
+
+1. **The best two-class edge is better than the quantile median split.** On the
+   primary corpus the optimal edge is 37 C at +0.198%, against the quantile
+   scheme's 45 C at +0.154%. The share rises from 23.4% to 30.0%, which makes
+   the three corpora agree closely rather than span 23-30%.
+2. **The reachable bound is well below the envelope.**
+
+| corpus | largest trainable k | best reachable bound | share of envelope |
+|---|---|---|---|
+| primary | 9 | +0.496% | 75.1% |
+| external, design-matched | 13 | +0.645% | 66.5% |
+| external, uncapped | 11 | +0.341% | 69.9% |
+
+So the gap worth quoting is **2.3x to 2.5x between the best two-class threshold
+and the best trainable binning**, not 3.3-4.3x. A quarter to a third of the
+envelope exists only in bins of a few hundred sequences.
+
+**And it saturates early.** On the primary corpus five classes reach +0.462%
+(69.9%) and nine reach +0.496% (75.1%): four more classes buy 0.034 pp. The
+recommendation this licenses is *four to six classes*, which is both cheap and
+concrete, and not *as many as the database records*.
+
+This correction was found before any GPU time was spent on the granularity
+series, by checking class populations for the k=8 and k=16 runs that series was
+going to launch. The smallest class would have held 482 and 313 sequences, so a
+weak measured gain there would have been control-token sparsity rather than a
+property of the label. The series as pre-registered in section 5.2e uses the
+minimum-mass-maximising edges instead, every class above the floor.
 
 ## What this licenses the paper to claim, and what it does not
 
@@ -97,7 +140,7 @@ of the quantile scheme and not a violation of monotonicity.
 **Does not:**
 
 - Any statement about what fraction of its available signal PRIME captured.
-- Any claim that the 3.3-4.3x envelope gap is reachable by a trained model.
+- Any claim that the 2.3-2.5x reachable gap is realised by a trained model.
   Section 5.1 measures the two-class case and finds measured gain tracking the
   bound loosely at best; section 6.2 shows this measure cannot even rank
   granularities, so the envelope is a bound and explicitly not a target. The
