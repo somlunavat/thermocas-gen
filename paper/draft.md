@@ -43,11 +43,15 @@ and reports the difference as +0.106 Spearman on thermostability assays and
 -0.004 on activity assays -- numbers that cannot be compared across papers or
 against any property of the corpus they were obtained on. We supply the
 missing scale and measure what it is worth. Mutual information between residue
-identity and label, computed from residue counts in CPU-minutes, upper-bounds
-the likelihood gain any model can take from that label; at a database's native
-temperature resolution it bounds every possible binning of it. Across three
-prokaryotic corpora that envelope is +0.49% to +0.97% in perplexity, and the
-two-class threshold every surveyed system uses reaches only 23% to 30% of it.
+identity and label, computed from residue counts in CPU-minutes, puts the value
+of a label in perplexity units on the corpus the model trains on; at a
+database's native temperature resolution it bounds every coarser binning of
+that database's labels, because mutual information cannot fall when a partition
+is refined. Across three prokaryotic corpora that envelope is +0.49% to +0.97%
+in perplexity, and the two-class threshold every surveyed system uses reaches
+only 23% to 30% of it. The estimate is unigram, so it is a lower bound on what
+a contextual model extracts and not a ceiling on it: ten of our sixteen runs
+exceed their own, by up to 1.56x.
 We then measure what a model actually extracts, in seventeen GPU runs that
 differ only in how the label is defined -- byte-identical sequences, clusters
 and splits, so the comparison isolates label definition from corpus
@@ -147,8 +151,8 @@ say about this candidate is precisely where and why it fails.
 
 We make no claim that the measure estimates achievable gain, and none that it
 ranks label definitions robustly. It is a lower bound computed from unigram
-statistics; two of our runs exceed their own bound, as a model with context
-should. What we claim is that the field is missing a denominator, that this is a
+statistics; ten of our sixteen runs exceed their own bound, by up to 1.56x,
+as a model with context should. What we claim is that the field is missing a denominator, that this is a
 cheap and testable candidate for one, and that this is precisely how far it
 goes.
 
@@ -291,8 +295,9 @@ made before the eight-threshold runs and section 5.1c confirms it.
 **This is a lower bound on what a model can extract, not an upper bound.** The
 estimate is unigram: it sees residue composition and nothing else. A language
 model has context and can exploit substitutions, motif placement and length
-that no residue histogram can represent. Two of our runs exceed their own
-bound, which is the expected behaviour and not an error. The measure therefore
+that no residue histogram can represent. Ten of our sixteen runs exceed their
+own bound -- ratios across the sixteen span 0.31x to 1.56x -- which is the
+expected behaviour and not an error. The measure therefore
 cannot support any claim that conditioning has saturated, and we make none.
 
 **It is nevertheless a scale**, and that is the use we put it to. It is computed
