@@ -2154,3 +2154,65 @@ states another; the per-corpus spread (+0.38/+0.90/+0.00 corpus-wide,
 +0.71/+1.00/+0.20 within-cluster) is now the figure's message. Its computed
 values reproduced the independent analysis exactly, which is the cross-check
 that matters.
+
+## 2026-11-02 — The PRIME comparison is impossible, and that is the better finding
+
+The follow-up flagged since 2026-10-27 — compute the bound for a published
+system's own corpus and report its gain as a fraction of it — **cannot be
+done**, and not for want of data. PRIME reports no likelihood quantity
+anywhere. Its only ablation of the temperature objective is downstream
+Spearman on zero-shot mutant effect prediction: 0.439 with it against 0.333
+without on twenty thermostability assay datasets, and 0.414 against 0.418 on
+eleven activity datasets. Nothing public converts +0.106 Spearman over an
+assay set into a share of a corpus's mutual information. Building that bridge
+would have been an invention, so the number I promised in §8 does not exist
+and §8 now says so.
+
+This is a stronger argument than the one intended. The best-resourced system
+in the area is the only one of six that ablates its label at all, and even its
+careful experiment is unreadable as evidence about labels — unbounded above,
+assay-specific, uncomparable to anything computable from the 96M pairs it
+trained on. That is the no-denominator thesis stated with the field's own
+flagship numbers rather than ours.
+
+What is computable is the **envelope**. Mutual information cannot fall under
+refinement, so I(residue; OGT) at a database's native resolution upper-bounds
+every binning of its labels.
+
+| corpus | distinct OGTs | 2-class | envelope | share |
+|---|---|---|---|---|
+| primary | 47 | +0.154% | +0.661% | 23.4% |
+| external, design-matched | 63 | +0.274% | +0.970% | 28.3% |
+| external, uncapped | 77 | +0.148% | +0.488% | 30.4% |
+
+A two-class threshold reaches 23–30% of what the corpus allows, consistently
+across two OGT databases and a threefold range of envelopes.
+
+`18_label_envelope.py` reports the Miller-Madow correction beside every
+figure, because the bias is (|R|−1)(|B|−1)/2N and |B| at native resolution is
+47–77 rather than 2 — the bias grows with exactly the refinement that raises
+the estimate. It is 0.000–0.005 pp against envelopes of 0.5–1.0 pp, which
+needed establishing rather than assuming. Two honest cautions are in the
+script's output and the draft: the envelope is a bound and not a target (our
+one four-class run reached 0.66x of its bound, and §6.2 shows the measure
+cannot rank granularities), and the intermediate quantile rows are not nested,
+so the series can dip — as it does at 6 and 11 classes on the uncapped corpus.
+
+The paper was reframed to lead with the scale and the measurement rather than
+with "does a corpus statistic predict measured gain", whose answer is no. The
+predictor's failure is now a result inside that frame instead of the thesis.
+Retitled; sections renumbered with the envelope as 5.1b.
+
+Also retitled commit f2a324c, "Validate the conditioning ceiling on a corpus
+we did not build" → "A second corpus: the ceiling curve transfers, sampling
+design sets the peak". "Validate" claimed a verdict the commit did not deliver
+and that later work contradicted. The rewrite replaced the tip of origin/main,
+so the push needs --force-with-lease; backup-before-retitle holds the old
+history.
+
+Checked for Claude attribution across the repo and GitHub: commit authors,
+committers, all refs and the reflog, every commit body, the GitHub
+contributors API, .mailmap and git config. One contributor, somlunavat, 52
+contributions; zero matches for "claude" or "co-authored" anywhere in history.
+The only two "claude" strings in tracked files are .gitignore's `.claude/` and
+modal_app.py's upload ignore-list, both of which exist to keep it out.
