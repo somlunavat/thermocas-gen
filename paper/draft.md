@@ -60,17 +60,25 @@ composition, which nothing in the related work does. How the label is binned
 is worth a factor of 3.9 to 4.2 in measured conditioning gain, on three
 corpora and two backbones, with margins an order of magnitude above the
 shuffle noise floor; thresholds below 35 degrees C give a small fraction of
-what is available above 40. The statistic is a usable scale and a poor
-selector, and we establish the second half rather than hiding it: on a corpus
-chosen in advance so that the predictors disagree, with the outcome
-pre-registered, a baseline that reads nothing from any corpus ranks four label
+what is available above 40. Two further pre-registered tests, both with the
+direction fixed before launch, separate what the scale can and cannot do.
+Across granularity -- two, four, six and nine classes, each partitioned to
+keep classes trainable -- measured gain rises 2.5x as the bound rises 2.5x,
+ranking the four perfectly on both splits, and four classes already capture
+nine classes' gain to within 1.2 standard deviations. Across threshold
+placement it fails: on a corpus chosen in advance so that the predictors
+disagree, a baseline that reads nothing from any corpus ranks four label
 definitions perfectly while the statistic ranks them no better than chance
-(+1.000 against +0.000; the pre-registered comparison is negative at more than
-six standard deviations on both splits). The failure is predictable from label
+(+1.000 against +0.000, negative at more than six standard deviations on both
+splits), and the two-class edge that maximises the bound measures 6.4 standard
+deviations worse than the conventional one. The scale chooses how many classes
+and not where to put them. The placement failure is predictable from label
 entropy, which is why we recommend reporting it: mutual information is
 maximised at an even marginal, so the bound inflates wherever a threshold
 splits a corpus evenly, which on a reviewed-protein corpus means wherever it
-separates organisms annotated at 37 degrees C from everything else.
+separates organisms annotated at 37 degrees C from everything else. Holding
+balance near its maximum at every granularity is what removes that confound
+and leaves resolution as the only thing varying.
 
 Word count target for submission: ~200, and the draft above is ~300. What
 compresses: the pre-registration detail and the backbone result. What does
@@ -472,17 +480,21 @@ in bins that exist only in the arithmetic.
 +0.462% (69.9% of the envelope) and nine reach +0.496% (75.1%); the four
 additional classes buy 0.034 percentage points. The actionable form of this
 table is therefore *four to six classes*, not *as many as possible*, and that
-is a change any of the six systems in section 2 could make for free.
+is a change any of the six systems in section 2 could make for free. Section
+5.2e measures it: four classes reach +0.245% on test against nine classes'
++0.273%, a difference of 1.2 sigma.
 
 Two cautions belong with this table, both in the text and not in a footnote.
 
 **The envelope is a bound, not a target.** It bounds what a perfect unigram
 predictor could take from the label; it says nothing about what a trained
-model will. Our one granularity run reached +0.248% against a four-class bound
-of +0.374%, which is 0.66x, and section 6.2 shows this measure cannot rank
-granularities against each other at all. "Use more classes" does not follow
-from this table on its own; section 5.2e tests it, having been written before
-those runs were launched.
+model will. Section 5.2e tests that directly, with the direction fixed before
+the runs were launched, and finds measured gain rising 2.5x as the bound rises
+2.5x -- `gain / bound` between 0.51x and 0.66x throughout, Spearman +1.000 on
+both splits. So "use more classes" does follow from this table, up to a point:
+the step from two classes to four is 5.8 sigma on test and every later step is
+within noise, which is why the recommendation below is four to six and not
+nine.
 
 **Equal-mass binning is not available on these corpora, and the quantile rows
 of the sweep are not nested.** A single recorded temperature can hold more
@@ -868,6 +880,39 @@ rises if measured gain does not follow it, and at k=9 a gain matching k=2's
 +0.251% would score 0.51x. Reading a size failure as grounds to discard the
 test would be reading the unfavourable outcome as a malfunction.
 
+#### Outcome: the prediction was wrong, at 9.4 sigma
+
+| run | k | edges (C) | min class | bound | val gain | test gain | gain/bound |
+|---|---|---|---|---|---|---|---|
+| `gran_k2` | 2 | 37 | 41.6% | +0.198% | +0.103% | +0.110% | 0.55x |
+| `gran_k4` | 4 | 32,45,60 | 19.5% | +0.372% | +0.277% | +0.245% | 0.66x |
+| `gran_k6` | 6 | 30,32,45,55,67 | 10.8% | +0.488% | +0.320% | +0.248% | 0.51x |
+| `gran_k9` | 9 | 29,32,45,49,53,56,67,83 | 5.5% | +0.496% | +0.361% | +0.273% | 0.55x |
+
+All four passed both Gate 2 criteria, z from 8.6 to 23.5. Neither void
+condition applies. The primary outcome is **positive on both splits**: +0.258
+pp at 10.6 sigma on validation, +0.163 pp at 9.4 sigma on test, against a
+prediction on record of negative-or-within-2-sigma. Secondary: Spearman
+between the reachable bound and measured gain is **+1.000 on both splits**,
+exact one-sided p = 0.042, the smallest attainable at n=4.
+
+**Measured gain rises 2.5x as the bound rises 2.5x, and `gain / bound` stays
+between 0.51x and 0.66x across that range.** That is the behaviour a scale
+should have, and it is the first pre-registered test in this paper that the
+corpus statistic has won.
+
+Two qualifications belong in the main text. **The gain saturates earlier than
+the bound.** Two classes to four is +0.135 pp at 5.8 sigma on test; four to
+six is 0.1 sigma, six to nine is 1.2 sigma, and four to nine is 1.2 sigma on
+test against 2.9 on validation. Four classes reach +0.245% of the +0.273% that
+nine reach. So section 5.1b's "four to six classes" is now measured, and the
+measurement supports the low end of it. **And the test is of resolution, not
+placement** -- see section 6.2, which this result required us to rewrite
+rather than merely qualify.
+
+Full analysis, including why `sweep_c4` pointed the other way:
+`results/granularity_20261103/measured.md`.
+
 ### 5.3 Sampling design is half the measurement
 
 The uncapped, unbalanced external corpus peaks at 35 degrees C instead, and
@@ -959,19 +1004,50 @@ they did not support it: the design-matched corpus gives 0.88x to 1.84x and the
 uncapped one 0.31x to 1.29x, the latter spanning a factor of 4.2 across four
 thresholds. The within-cluster form does not estimate either.
 
-### 6.2 It does not rank across granularities, and the obvious fix is worse
+### 6.2 It ranks resolution, not placement
 
-`sweep_c4` has the highest bound of the five by a wide margin, +0.374%, 1.5x
-the 55 degrees C threshold's, and a *lower* measured gain than both t45 and
-t55. Four classes raise the bound without raising what the model extracts, so a
-single number does not order label definitions that differ in kind.
+This section previously claimed the measure does not rank across granularities,
+on the evidence of a single run. Section 5.2e refutes that with a
+better-designed version of the same experiment, and the replacement claim is
+sharper.
 
-The natural repair is to normalize by label entropy, since refinement raises
-both $I$ and $H$. It makes things worse. Spearman against measured gain goes
-from +0.600 raw to -0.300 normalized across all five runs, and from +0.800 to
--0.200 on the four thresholds. We report this as a dead end rather than omit
-it. Whether the granularity axis needs its own bound, or whether the gap is a
-capacity limit on a single control token rather than a corpus property, is open.
+**It ranks granularity perfectly.** Across k = 2, 4, 6 and 9, with the
+partition at each k chosen to maximise the smallest class's share of residues,
+Spearman between the reachable bound and measured gain is +1.000 on validation
+and on test, exact p = 0.042.
+
+**It ranks threshold placement no better than chance, and its own optimum is a
+poor choice.** Section 5.2d measured rho +0.000 corpus-wide against a trivial
+baseline's +1.000. Worse, the two-class edge that maximises the bound on the
+primary corpus is 37 degrees C, and it measures +0.110% on test where the
+conventional 45 degrees C edge measures +0.251% -- **6.4 sigma worse, at a
+higher bound**.
+
+| k=2 edge | how chosen | bound | test gain |
+|---|---|---|---|
+| 37 C | maximises the bound | +0.198% | +0.110% |
+| 45 C | biological convention | +0.154% | **+0.251%** |
+
+One mechanism explains both halves. Moving a threshold changes class balance
+and biological meaning together, and mutual information responds to the
+balance: 37 degrees C is where this corpus splits most evenly, and an even
+split of an Engqvist- or Gosha-derived corpus separates "mesophilic model
+organisms" from everything else rather than mesophiles from thermophiles.
+Holding "best-balanced partition at this k" fixed across a granularity series
+removes balance as the free variable, and what is left varying is resolution,
+which the statistic reads correctly.
+
+The practical form of this is a restriction, not a repair: **use the bound to
+choose how many classes, not where to put them.** Convention, or any rule of
+thumb that knows thermophiles start somewhere near 45-55 degrees C, chooses
+placement better than this statistic does.
+
+The entropy normalization we tried as a repair remains a dead end and we
+report it rather than omit it. Spearman against measured gain went from +0.600
+raw to -0.300 normalized across the 2026-10-27 batch, and +0.800 to -0.200 on
+its four thresholds. It is the wrong correction because the problem is not that
+refinement inflates $I$ -- section 5.2e shows refinement's effect on $I$ is
+read correctly -- but that balance inflates it at fixed resolution.
 
 ### 6.3 There is no peak to locate, only a plateau
 
@@ -1127,25 +1203,47 @@ uncapped corpus appeared to peak at 35 degrees C, which turned out to be
 Swiss-Prot's 37 degrees C pile-up rather than anything about thermophilic
 sequence.
 
-**Do not use this statistic to choose the threshold.** We set out to supply a
-denominator and we would have preferred to recommend one. On the corpus chosen
-in advance to give it its best chance, against a baseline that reads nothing
-from any corpus, it ranked four label definitions no better than chance
-(+0.000) while the baseline ranked them perfectly (+1.000), with the
-pre-registered comparison negative at more than six sigma. A reader who wants
-a threshold is better served by "well above the mode of your temperature
-distribution" than by computing our measure. Where it does earn its cost is as
-a *scale*: on the species-balanced corpora it tracks the magnitude of
-achievable gain well (Pearson +0.98 against the baseline's +0.83), and that is
-the use the field actually lacks -- comparing a reported gain against what its
-corpus allowed, rather than choosing a label.
+**Use four to six classes rather than a threshold.** This is the one label
+recommendation the paper supports with a pre-registered test it predicted
+would fail. Partitioning the primary corpus into four classes instead of two
+raised measured conditioning gain from +0.110% to +0.245% on held-out test
+sequences, 5.8 sigma, and six and nine classes added nothing beyond noise. The
+bound says the same thing for a reason that transfers: a two-class threshold
+reaches 28-30% of a corpus's envelope, and four to six classes reach most of
+what class sizes allow. Every system in section 2 uses two.
 
-**The strongest follow-up needs no new training.** Compute the bound for the
-published setups' own corpora. The Engqvist data behind PRIME's ~96M pairs is
-public, as is the Swiss-Prot side of it. "Their reported gain is X% of what
-their corpus allows" would make this measure useful to everyone already working
-in this area rather than only to us, and it is a CPU job. Beyond that: a third
-corpus with a growth-temperature measurement genuinely independent of the
+**Do not use this statistic to choose the threshold -- only to choose the
+number of classes.** We set out to supply a denominator and we would have
+preferred to recommend one without qualification. On the corpus chosen in
+advance to give it its best chance, against a baseline that reads nothing from
+any corpus, it ranked four label definitions no better than chance (+0.000)
+while the baseline ranked them perfectly (+1.000), with the pre-registered
+comparison negative at more than six sigma; and its own preferred two-class
+edge measures 6.4 sigma worse than the conventional one. A reader who wants a
+threshold is better served by "well above the mode of your temperature
+distribution" than by computing our measure. Along granularity it is a
+different instrument: Spearman +1.000 on both splits, `gain / bound` between
+0.51x and 0.66x across a 2.5x range. The difference is that moving a threshold
+changes class balance and biological meaning together while a granularity
+series holding balance near its maximum does not. Where it earns its cost
+besides is as a *scale*: on the species-balanced corpora it tracks the
+magnitude of achievable gain well (Pearson +0.98 against the baseline's
++0.83), and that is the use the field actually lacks -- comparing a reported
+gain against what its corpus allowed, rather than choosing a label.
+
+**The follow-up we wanted is not available, and that is itself the argument.**
+We intended to compute the bound for the published setups' own corpora and
+report each reported gain as a share of what its corpus allowed. The corpus
+side is a CPU job and the Engqvist data behind PRIME's ~96M pairs is public.
+The other side does not exist: no surveyed system reports a likelihood or
+perplexity quantity for its temperature label at all, and PRIME's downstream
+Spearman cannot be converted into one without inventing the bridge. So the
+division is not available to us or to anyone, which is the paper's thesis
+stated as a failed experiment rather than as a complaint, and it is why the
+recommendation above is to report the shuffled-label gain. Beyond that: the
+granularity series on a second corpus, to see whether rho +1.000 and a
+near-constant `gain / bound` are properties of the measure or of this corpus;
+a third corpus with a growth-temperature measurement genuinely independent of the
 culture-collection catalogues that Gosha and Engqvist both scrape, and a second
 architecture family to turn section 5.2c from a capacity comparison into an
 architecture-independence result. Both are flagged as future work and neither

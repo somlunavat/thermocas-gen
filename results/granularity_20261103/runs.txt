@@ -15,9 +15,13 @@ gran_k9  9  29,32,45,49,53,56,67,83   5.5%       +0.4963%   fc-01M6HK5DQ8ERNGH31
 Reports land at checkpoints/stage_a/<run>/{gate2,test}_report.txt on volume
 thermocas-gen-vol.
 
-Note on comparability with the 2026-10-27 batch: sweep_t45 and sweep_c4 scored
-2,000 of the 16,952 test sequences, because the test cap followed the Gate 2
-limit in the code of that date. These four score the full test split. The
-series is internally consistent, which is what the pre-registered outcome
-needs; the 10/27 runs are used only as the prior that motivated the
-prediction, not as members of the series.
+Note on comparability with the 2026-10-27 batch, corrected after the runs
+landed: the test cap follows --gate2-limit in the current code too
+(scripts/11_train.py:857), so these four scored 2,000 of the 16,952 test
+sequences, the same as sweep_t45 and sweep_c4. The pre-launch note here said
+they would score the full split; that was wrong. The effect is favourable --
+the series and the 10/27 batch are directly comparable, which is what the
+gran_k2-versus-sweep_t45 comparison in measured.md relies on.
+
+Test is scored at the checkpoint validation selected, not the last step. For
+gran_k9 that was step 2,000; for the other three, step 3,000.

@@ -2216,3 +2216,57 @@ contributors API, .mailmap and git config. One contributor, somlunavat, 52
 contributions; zero matches for "claude" or "co-authored" anywhere in history.
 The only two "claude" strings in tracked files are .gitignore's `.claude/` and
 modal_app.py's upload ignore-list, both of which exist to keep it out.
+
+## 2026-11-03
+
+Pushed the fourteen local commits (`--force-with-lease`; the retitle had
+replaced origin/main's tip). Contributor list on the remote is `somlunavat`
+alone.
+
+Corrected the abstract. It said the residue-count mutual information
+"upper-bounds the likelihood gain any model can take from that label".
+Sections 3 and 6 say the opposite, correctly. Ten of the sixteen GPU runs
+exceed their own ceiling, up to 1.56x, range 0.31x-1.56x. The envelope claim
+is unaffected because it compares mutual information at one label resolution
+against another; what is not licensed is reading a measured model gain as a
+fraction of it.
+
+Found the quantile-binning defect before spending GPU time on it. Checking
+class populations for the planned k=8 and k=16 runs showed the
+equal-residue-mass scheme cannot deliver equal mass here: 30 C alone is 29.6%
+of the primary corpus's residues, 37 C is 18.5%, and an atom cannot be split.
+At k=16 the smallest class held 0.1% of residues and 313 sequences, so that
+run would have measured control-token sparsity. `18_label_envelope.py` now
+also maximises the smallest class's share by dynamic program over contiguous
+temperature intervals, tested against brute force. Two numbers moved: the
+two-class share of the envelope is 30.0/28.3/30.4% rather than 23.4/28.3/30.4%,
+and the reachable bound under a 5%-of-residues floor is 75.1/66.5/69.9% of the
+envelope, making the quotable gap 2.3-2.5x rather than 3.3-4.3x.
+
+Pre-registered and ran the granularity series: k = 2, 4, 6, 9 on the primary
+corpus, minimum-mass-maximising edges, direction fixed in commit 291d576
+before the launch commit f6757e3. **The prediction was wrong.** I predicted
+measured gain would not follow the bound; it is positive at 9.4 sigma on test
+and 10.6 on validation, Spearman +1.000 on both splits at the smallest exact p
+n=4 permits, and `gain / bound` stays between 0.51x and 0.66x across a 2.5x
+range of bounds. First pre-registered test the corpus statistic has won.
+
+Two lessons worth keeping. The gain saturates earlier than the bound -- two
+classes to four is 5.8 sigma on test and every later step is within noise, so
+"four to six classes" narrows to four. And `sweep_c4` misled us because its
+k=2 comparator, `sweep_t45`, was chosen by biological convention rather than
+by the same rule as the rest of the series: a granularity series whose members
+are chosen by different rules is not a granularity series. Section 6.2's claim
+that the measure cannot rank granularities was built on that one comparison
+and is now refuted by a better-designed version of its own experiment.
+
+The replacement claim is stronger: the statistic ranks resolution and not
+placement. Its own preferred two-class edge, 37 C, measures 6.4 sigma worse
+than the conventional 45 C at a higher bound -- the balance artifact measured
+directly rather than inferred from a rank correlation. Section 5.2d stands
+unchanged; the two results are about different axes.
+
+Also removed a stale section 8 follow-up that still proposed computing
+"their reported gain as a share of what their corpus allows", which
+`results/prime_denominator_20261102/findings.md` had already established is
+not computable.
