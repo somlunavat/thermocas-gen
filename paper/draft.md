@@ -1404,9 +1404,11 @@ no independent replication was found; cite them as reported.
 
 ## What is missing before submission
 
-Status 2026-11-01, after all seventeen runs. **Every experiment in the plan has
-been run, including the one that closed section 5.1d's open problem -- against
-the measure.** No further GPU time is needed. What remains:
+Status 2026-11-09, after twenty-five runs. Every experiment in the plan has
+been run, plus two granularity series that were not in it: section 5.2e, which
+refuted its own pre-registered prediction and became the paper's one positive
+result, and section 5.2f, which replicates it on a second corpus. What
+remains:
 
 - **A pass over sections 1-4 and 7-8 for length and citation style.** The
   content is written; sections 1 and 8 were rewritten after 5.2d landed and
@@ -1418,27 +1420,35 @@ the measure.** No further GPU time is needed. What remains:
   that frame rather than as the thesis. Title changed accordingly. What is
   left is to re-read sections 1 and 8 as a pair once more, since they are
   where a reader decides what the paper claims.
-- **Extract the four-page workshop version.** Target: an ICML comp-bio
-  workshop (WCB, ML4LMS, AI4Science or similar). Their CFPs are not published
-  until roughly April, with deadlines around May, so the constraint is not the
-  calendar. Keep: the no-denominator argument with PRIME's table, the
-  relabeling design, 5.1, 5.1b, a compressed 5.1d/5.2d, and Figures 1 and 3.
-  Cut: section 7 entirely, 6.2, and the backbone result to one sentence. The
-  full draft is ~9,500 words; the workshop version is ~1,800. Most ICML
-  workshops are non-archival, so this does not burn a later main-track
-  attempt.
+- **Extract the four-page workshop version**, drafted at
+  `paper/workshop.md`. Target: an ICML comp-bio workshop (WCB, ML4LMS,
+  AI4Science or similar). Their CFPs are not published until roughly April,
+  with deadlines around May, so the constraint is not the calendar. Keep: the
+  no-denominator argument with PRIME's table, the relabeling design, 5.1, 5.1b
+  with reachability, 5.2e, 6.2's resolution-versus-placement split, a
+  compressed 5.2d, and Figures 1 and 3. Cut: section 7 entirely, 5.3 to two
+  sentences, and the backbone result to one. **The earlier version of this
+  item said to cut 6.2; that is now wrong**, since 6.2 carries one of the two
+  headline results. Most ICML workshops are non-archival, so this does not
+  burn a later main-track attempt.
 - **Nothing in the results is pending.** Figures regenerate from committed
   files via `scripts/17_figures.py`.
 
-Spend: roughly $49 of A10 time against the $31 originally estimated, over
-seventeen runs.
+Spend: roughly $63 of A10 time against the $31 originally estimated, over
+twenty-five runs. The overrun is the two pre-registered tests that were not in
+the original plan (5.2d and 5.2e) and the replication of the second (5.2f).
 
 Future work, flagged and not claimed: a corpus with a growth-temperature
 measurement independent of the culture-collection catalogues that Gosha and
 Engqvist both scrape; a second architecture family, to turn 5.2c from a
 capacity comparison into an architecture-independence result; and a
-balance-corrected statistic, which 5.2d makes the obvious next candidate but
-which this paper does not propose or test.
+balance-corrected statistic. That last item is weaker than it looks now:
+section 5.2e shows the balance confound is avoided by changing *which question*
+the statistic is asked -- how many classes rather than where to cut -- and not
+by correcting the statistic, so a balance-corrected variant would be solving a
+problem the axis restriction already sidesteps. What a corrected statistic
+would buy is threshold placement, which section 6.2 argues convention already
+does better.
 
 ## Revision history
 
