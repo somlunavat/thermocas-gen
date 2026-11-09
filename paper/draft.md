@@ -913,6 +913,70 @@ rather than merely qualify.
 Full analysis, including why `sweep_c4` pointed the other way:
 `results/granularity_20261103/measured.md`.
 
+### 5.2f Does it replicate on a second corpus? Pre-registered 2026-11-09
+
+**Written before these four runs were launched.** Call ids in
+`results/granularity_20261109/runs.txt`; the commit carrying this section
+immediately precedes the launch commit.
+
+Section 5.2e is one corpus, one backbone and four points. Spearman +1.000 at
+n=4 is the most a four-point series can show, and `gain / bound` held between
+0.51x and 0.66x is four numbers. Neither establishes that the bound reads
+resolution in general rather than on `pretrain` in particular. This replicates
+the series on the design-matched external corpus, which draws its growth
+temperatures from Engqvist rather than Gosha and was built by the same
+per-species capping and balancing recipe.
+
+**Design.** Four runs on `external_balanced`, differing only in
+`--bin-edges`; byte-identical sequences, clusters and splits; primary
+backbone; 3,000 steps; A10G; Gate 2 on 2,000 validation sequences; five
+shuffles. Edges are that corpus's own minimum-mass-maximising partitions, not
+`pretrain`'s.
+
+| run | k | edges (C) | smallest class | bound |
+|---|---|---|---|---|
+| `gbal_k2` | 2 | 42 | 49.8% | +0.274% |
+| `gbal_k4` | 4 | 31,42,67 | 24.8% | +0.403% |
+| `gbal_k6` | 6 | 30,37,45,59,75 | 15.9% | +0.517% |
+| `gbal_k9` | 9 | 28,31,37,42,56,63,73,90 | 8.5% | +0.576% |
+
+**Primary outcome, fixed now: the sign of (test gain at k=9) - (test gain at
+k=2).** The bound rises 2.1x across that span, against 2.5x on `pretrain`.
+
+*The prediction on record is that this difference is positive beyond two
+standard deviations*, replicating 5.2e. Having been wrong in the other
+direction once, the honest thing is to predict the result we now expect and
+record what would refute it.
+
+**What would refute it.** A difference that is negative, or within two
+standard deviations of zero. That outcome would confine 5.2e to its own
+corpus, would require section 6.2 to be narrowed from "the statistic ranks
+resolution" to "it ranked resolution on one corpus", and would mean the
+paper's single positive pre-registered result does not generalise. Section 6.2
+would then be rewritten a second time, and the reachability recommendation in
+5.1b would lose its measured support and revert to an arithmetic one.
+
+**Secondary.** Spearman between this corpus's reachable bound and measured
+test gain across the four runs, exact one-sided permutation p over all 24
+relabelings; and whether `gain / bound` stays inside a comparable band. The
+band is reported, not tested: 5.2e's 0.51x-0.66x was not pre-registered as an
+interval and we will not treat agreement with it as a prediction met.
+
+**Void conditions**, and the letter of them is what counts.
+
+(i) Any run failing Gate 2's **significance** criterion, z < 3 against the
+shuffle spread.
+
+(ii) Any run whose rarest class holds under 5% of the corpus's residues, which
+the edges above are chosen to prevent and which the table records so it can be
+checked.
+
+**A Gate 2 failure on the size criterion does not void this test.** This
+corpus is a third the size of `pretrain` in residues, so a smaller absolute
+gain is expected and `gain / bound` may fall below the 0.50x floor without
+bearing on the primary outcome, which is a difference between two runs and not
+a ratio to a bound.
+
 ### 5.3 Sampling design is half the measurement
 
 The uncapped, unbalanced external corpus peaks at 35 degrees C instead, and
