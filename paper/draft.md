@@ -53,7 +53,7 @@ a floor of 5% of residues per class -- below which a control token is too rare
 to train on -- caps what any binning can reach at 67% to 75%. The estimate is
 unigram, so it is a lower bound on what a contextual model extracts and not a
 ceiling on it: ten of our sixteen runs exceed their own, by up to 1.56x.
-We then measure what a model actually extracts, in seventeen GPU runs that
+We then measure what a model actually extracts, in twenty-one GPU runs that
 differ only in how the label is defined -- byte-identical sequences, clusters
 and splits, so the comparison isolates label definition from corpus
 composition, which nothing in the related work does. How the label is binned
@@ -98,9 +98,8 @@ thermostable enzyme is cheaper to ship, store and run. The mechanism of control
 is almost always the same. The organism a sequence came from has a documented
 growth temperature, that temperature is reduced to a label, and the label is
 supplied to the model as a token, an embedding, an auxiliary regression target
-or a steering vector. At least five recent systems do some version of this,
-across *Science Advances*, *NeurIPS*, *ICML*, *Scientific Reports* and
-*Nature*.
+or a steering vector. Six recent systems do some version of this, across
+*Science Advances*, *NeurIPS*, *ICML*, *Scientific Reports* and *Nature*.
 
 The effects they report are small, and they are reported without a scale. No
 paper in this literature states how much its label *could* have been worth on
@@ -121,23 +120,26 @@ two assay families is suggestive -- a growth-temperature label ought to help
 with thermostability and not with activity -- and nobody can currently check
 it against a scale. The quantities this field compares have no denominator.
 
-This paper supplies that denominator, measures what a model actually extracts
-against it, and establishes precisely how far it can be trusted. The quantity
-is cheap: the mutual information between residue identity and label, computed
-from residue counts over the same corpus the model trains on, in CPU-minutes.
-Because mutual information cannot fall when a label partition is refined, the
-same quantity evaluated at a temperature database's native resolution
-upper-bounds *every* binning of that database's labels -- an envelope against
-which any particular choice can be read. On three prokaryotic corpora that
-envelope is +0.49% to +0.97% in perplexity, and the two-class threshold used
-by every system in section 2 reaches 28% to 30% of it, and no binning with
-trainable class sizes reaches more than 75%.
+This paper supplies a scale, measures what a model actually extracts against
+it, and establishes which questions it answers and which it does not. We do
+not claim it is the denominator this field needs for every purpose; section 6.2
+is where we say what it is not. The quantity is cheap: the mutual information
+between residue identity and label, computed from residue counts over the same
+corpus the model trains on, in CPU-minutes. Because mutual information cannot
+fall when a label partition is refined, the same quantity evaluated at a
+temperature database's native resolution upper-bounds *every* coarser binning
+of that database's labels -- an envelope against which any particular choice
+can be read. On three prokaryotic corpora that envelope is +0.49% to +0.97% in
+perplexity. The two-class threshold used by every system in section 2 reaches
+28% to 30% of it, and no binning whose classes stay large enough to train on
+reaches more than 75%.
 
-To find out, we hold everything except the label fixed. Our sweep variants are
+The envelope says what is available; it does not say what a model takes. To
+measure that we hold everything except the label fixed. Our sweep variants are
 *relabelings*: `temp_bin` is recomputed from the recorded growth temperature in
 memory at startup, so every variant trains on byte-identical sequences,
 clusters and splits, and only the meaning of the control token changes. Across
-seventeen runs on three corpora and two backbones we find that **how the label
+twenty-one runs on three corpora and two backbones we find that **how the label
 is defined is worth a factor of 3.9 to 4.2 in measured conditioning gain**,
 from +0.070% at cold thresholds to +0.273% on a plateau between 45 and 65
 degrees C on the primary corpus, and by comparable factors on the other two,
@@ -172,7 +174,7 @@ goes.
    every other corpus property. Nothing in the related work does this; its
    comparisons confound label definition with corpus composition.
 2. The measurement that label definition is worth 3.9x to 4.2x in conditioning
-   gain, over seventeen runs on three corpora and two backbones, each verified
+   gain, over twenty-one runs on three corpora and two backbones, each verified
    against a shuffled-token control and a cluster-disjoint test split.
 3. An envelope over all binnings of a temperature database's labels, with the
    finding that the conventional two-class threshold reaches 23-30% of it, and
@@ -375,10 +377,13 @@ cluster-disjointness is enforced at the clustering stage and verified in each
 report.
 
 **Setup.** ProGen2-base with LoRA, stage A, 3,000 steps on a single A10.
-Seventeen runs: eight thresholds on the primary corpus (section 5.1), five on
-a design-matched second corpus (5.2b), three on a second backbone (5.2c), and
-four on an unselected third corpus (5.2d), with 30, 55 and 75 degrees C shared
-between the first and third so they compare directly.
+Twenty-one completed runs: eight thresholds on the primary corpus (section
+5.1), five on a design-matched second corpus (5.2b), three on a second
+backbone (5.2c), four on an unselected third corpus (5.2d), and four
+granularities on the primary corpus (5.2e) -- with 30, 55 and 75 degrees C
+shared between the first and third so they compare directly. Four more, the
+replication of 5.2e on the design-matched corpus (5.2f), were launched
+2026-11-09 and are not included in any number reported here.
 
 **Primary corpus.** 311,987 sequences, 113.8M residues, 47 distinct growth
 temperature values, 1,552 both-class clusters at the 45 degrees C threshold,
@@ -1211,14 +1216,16 @@ it can fail on a single tight family.
 
 **Label definition is an untuned free parameter and it is cheap to tune.** That
 is the finding we would most like a reader to act on, and it does not depend on
-the corpus statistic working -- which, on the evidence below, it largely does
-not. Across seventeen runs, the choice of threshold moves measured
+the corpus statistic working -- which, on the evidence below, it does for
+choosing how many classes and not for choosing where to cut them. Across
+twenty-one runs, the choice of threshold moves measured
 conditioning gain by a factor of 3.9 on the primary corpus, 3.8 on the
 design-matched one and 4.2 on the uncapped one, with the cold end of the range
 losing most of the available signal in all three. Every system in section 2
 fixes this parameter by convention.
 
-Four recommendations, in descending order of how well this paper supports them.
+Seven recommendations, in descending order of how well this paper supports
+them.
 
 **Do not define the label at a cold threshold.** This is the robust result. On
 all three corpora and both backbones, thresholds at or below 35 degrees C give

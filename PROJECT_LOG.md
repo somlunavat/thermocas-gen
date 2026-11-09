@@ -2270,3 +2270,38 @@ Also removed a stale section 8 follow-up that still proposed computing
 "their reported gain as a share of what their corpus allows", which
 `results/prime_denominator_20261102/findings.md` had already established is
 not computable.
+
+## 2026-11-09
+
+Pre-registered and launched the granularity replication on the design-matched
+external corpus: `gbal_k2/k4/k6/k9`, Engqvist growth temperatures, that
+corpus's own minimum-mass-maximising edges (42; 31,42,67; 30,37,45,59,75;
+28,31,37,42,56,63,73,90), bounds +0.274% to +0.576%, every class above the 5%
+floor. Section 5.2f, committed at ce80eb9 before the launch commit 45ff318.
+Having been wrong in the other direction on 5.2e, the prediction on record
+this time is that the result replicates, with the refuting outcome named.
+Ran `external_balanced` only, not both external corpora, to stay inside the
+authorised spend; the uncapped corpus is the harder adversarial test and is
+still available.
+
+Extracted the four-page workshop version to `paper/workshop.md`. Section 4.4
+is the pending replication and is marked as such. The draft's own cut list
+said to drop 6.2, which was written before 5.2e; 6.2 now carries one of the
+two headline results, so the checklist is corrected rather than followed.
+
+Read sections 1 and 8 as a pair, which found four things wrong:
+
+- Section 1 said "at least five recent systems" where section 2 surveys six
+  and the next paragraph says six.
+- Section 1 said the paper "supplies that denominator". It does not, and the
+  title says so. Now: supplies a scale, and points at 6.2 for what it is not.
+- Section 8 opened by saying the finding "does not depend on the corpus
+  statistic working -- which, on the evidence below, it largely does not."
+  That was true before 5.2e and is now false. The statistic works for
+  choosing how many classes and not for choosing where to cut.
+- A dangling "To find out," which referred to nothing after an earlier edit.
+
+Counts corrected throughout: twenty-one completed runs, not seventeen; seven
+recommendations in section 8, not four; roughly $63 of A10 time. The run
+enumeration in section 4 now lists the granularity series and states that the
+four pending runs are excluded from every reported number.
