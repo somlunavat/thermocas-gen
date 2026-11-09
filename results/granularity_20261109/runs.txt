@@ -1,0 +1,21 @@
+Granularity replication, launched 2026-11-09, pre-registered in
+paper/draft.md section 5.2f (commit ce80eb9, immediately before these
+launches).
+
+Corpus: external_balanced (design-matched, Engqvist growth temperatures, same
+per-species capping and balancing recipe as pretrain). Relabeling only --
+byte-identical sequences, clusters and splits across all four. Primary
+backbone, stage A, 3,000 steps, A10G, Gate 2 on 2,000 validation sequences,
+five shuffles. Edges are this corpus's own minimum-mass-maximising partitions,
+not pretrain's.
+
+run      k  edges                      min class  bound      call id
+gbal_k2  2  42                         49.8%      +0.2742%   fc-01M70X0FX0T373GDMQ7AR6FBYF
+gbal_k4  4  31,42,67                   24.8%      +0.4031%   fc-01M70X0K4VXF89DCJZMT030BQ1
+gbal_k6  6  30,37,45,59,75             15.9%      +0.5165%   fc-01M70X0PK11AN314GZHHCNR0B1
+gbal_k9  9  28,31,37,42,56,63,73,90    8.5%       +0.5755%   fc-01M70X0T4AVKAHW6WRPTSBY7N6
+
+Reports land at checkpoints/stage_a/<run>/{gate2,test}_report.txt on volume
+thermocas-gen-vol. Test is scored at the checkpoint validation selected, and
+capped at --gate2-limit, so 2,000 sequences -- the same cap as the 2026-10-27,
+2026-10-30 and 2026-11-03 batches.
