@@ -5,9 +5,8 @@ Target: an ICML computational-biology workshop (WCB, ML4LMS, AI4Science).
 Every number here is carried from the full draft and is wired to a file under
 `results/`; section numbers in brackets point back to the draft.
 
-**Status note.** Section 4.4's replication is in flight as of 2026-11-09 and
-is marked `[PENDING]` below. Nothing in this file states its outcome. It was
-pre-registered in draft section 5.2f before launch.
+**Status note.** Complete as of 2026-11-10. Section 4.4's replication was
+pre-registered in draft section 5.2f before launch and has landed.
 
 ## Abstract
 
@@ -23,13 +22,13 @@ trains on, and at a database's native temperature resolution it bounds every
 coarser binning of those labels. Across three prokaryotic corpora that
 envelope is +0.49% to +0.97%, the best two-class threshold reaches 28-30% of
 it, and a floor of 5% of residues per class caps any binning at 67-75%. In
-twenty-one runs that vary only the label definition within a corpus -- on
+twenty-five runs that vary only the label definition within a corpus -- on
 byte-identical sequences, clusters and splits -- label definition moves
-measured conditioning gain by a factor of 3.9 to 4.2. Two pre-registered tests
-divide what the scale can do from what it cannot: across granularity it ranks
-four label definitions perfectly, while across threshold placement it ranks no
-better than chance and its own preferred threshold measures 6.4 standard
-deviations worse than the conventional one. The scale chooses how many
+measured conditioning gain by a factor of 3.9 to 4.2. Three pre-registered
+tests divide what the scale can do from what it cannot: across granularity it
+ranks label definitions perfectly on two corpora and both splits, while across
+threshold placement it ranks no better than chance and its own preferred
+threshold measures 6.4 standard deviations worse than the conventional one. The scale chooses how many
 classes, not where to put them.
 
 ## 1. There is no denominator
@@ -199,12 +198,31 @@ biological meaning together; a granularity series holding the best-balanced
 partition at each $k$ removes balance as the free variable and leaves
 resolution, which the statistic reads correctly.
 
-### 4.4 Replication `[PENDING]`
+### 4.4 It replicates, and two secondary observations do not
 
-Section 4.2 is one corpus and four points. A replication on the
-design-matched external corpus, at the same $k$ with that corpus's own
-partitions, was pre-registered and launched 2026-11-09 [draft 5.2f]. Its
-outcome is not stated here.
+Section 4.2 is one corpus and four points, so we repeated it on the
+design-matched external corpus at the same $k$ with that corpus's own
+partitions, pre-registered with the direction fixed [draft 5.2f].
+
+| $k$ | bound | test gain | gain/bound |
+|---|---|---|---|
+| 2 | +0.274% | +0.432% | 1.58x |
+| 4 | +0.403% | +0.484% | 1.20x |
+| 6 | +0.517% | +0.582% | 1.13x |
+| 9 | +0.576% | +0.670% | 1.16x |
+
+The primary outcome is positive at 11.8 sigma on test and 11.5 on validation,
+and Spearman is **+1.000 on both splits** again. **Across the two corpora that
+is four perfect rank matches out of four**, over eight runs and two
+growth-temperature databases.
+
+Two secondary observations do not replicate, both hedged in advance.
+`gain / bound` is 0.51-0.66x on the primary corpus and 1.13-1.58x here, so it
+is corpus-dependent and must not be read as an efficiency. And the early
+saturation does not transfer: on the primary corpus only the two-to-four step
+was reliable, while here every step is significant and nine classes beat four
+by 8.8 sigma. The *ordering* replicates; the stopping point is corpus-specific
+and has to be read off that corpus's reachability table.
 
 ## 5. Recommendations
 
@@ -215,9 +233,13 @@ outcome is not stated here.
    length and input distribution fixed. PRIME's ablation is why we ask.
 2. **Report the corpus envelope and the label entropy beside it.** Both are
    CPU-minutes from the corpus and neither depends on an assay set.
-3. **Use four to six classes rather than a threshold.** Four classes instead
-   of two raised measured gain from +0.110% to +0.245%, 5.8 sigma. All six
-   surveyed systems use two.
+3. **Use several classes rather than a threshold, and let your own corpus set
+   how many.** Four classes instead of two raised measured gain from +0.110%
+   to +0.245% on the primary corpus, 5.8 sigma; on the design-matched corpus
+   nine classes beat four by 8.8 sigma. All six surveyed systems use two. The
+   count does not transfer, so compute the reachability table and take the
+   largest $k$ whose smallest class stays trainable; the bound can be trusted
+   for the ordering even where it cannot be trusted for the stopping point.
 4. **Do not use this statistic to choose the threshold.** Convention, or "well
    above the mode of your temperature distribution", does better.
 
@@ -225,10 +247,13 @@ outcome is not stated here.
 
 Prokaryotes only. One architecture family; the second backbone is a capacity
 comparison, not an architecture-independence result. The granularity result is
-four points on one corpus pending section 4.4, and $n$=4 cannot establish
-agreement -- a perfect rank match on four points is what four points can show
-at best. `gain / bound` near-constant at 0.51-0.66x is four numbers; the same
-ratio spans 0.31x to 1.56x across the project's other runs. Growth temperature
+four points per corpus on two corpora, and $n$=4 cannot establish agreement --
+a perfect rank match on four points is what four points can show at best, even
+four times over. `gain / bound` does not transfer between corpora and we draw
+no efficiency claim from it. Where the gain stops paying is corpus-specific,
+so the class-count advice is a procedure rather than a number. The uncapped
+third corpus, where the balance artifact is strongest, has not had a
+granularity series run on it. Growth temperature
 is a property of an organism and not of a protein, so every label here is a
 proxy. Nothing in this paper is an assay, and no claim is made about
 thermostability prediction.

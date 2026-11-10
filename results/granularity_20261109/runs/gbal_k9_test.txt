@@ -1,0 +1,22 @@
+checkpoint: /__modal/volumes/vo-TLzhuxHSjQsyZwUOiWhbG7/checkpoints/stage_a/gbal_k9/epoch=1-step=2000.ckpt
+test sequences scored: 1695 of 1695 in the split
+cluster-disjoint from train: yes
+
+perplexity with the correct growth-temperature token: 4.0552
+perplexity with shuffled tokens: 4.0825 (mean of 5)
+  individual shuffles: 4.0832, 4.0820, 4.0831, 4.0819, 4.0824
+relative gain: +0.670%
+
+is the effect real?
+  beats every shuffle   True
+  z vs shuffle spread   44.4  (required 3.0; spread 0.000616)
+  -> SIGNIFICANT
+
+is the effect large, given what the corpus allows?
+  corpus ceiling        +0.576% (scripts/13_conditioning_ceiling.py)
+  gain / ceiling        1.16x  (required 0.50x)
+  above the unigram ceiling, which is expected of a model that also has
+  context and can use substitutions a residue histogram cannot see.
+  -> LARGE ENOUGH
+
+GATE 2 PASSED

@@ -2305,3 +2305,44 @@ Counts corrected throughout: twenty-one completed runs, not seventeen; seven
 recommendations in section 8, not four; roughly $63 of A10 time. The run
 enumeration in section 4 now lists the granularity series and states that the
 four pending runs are excluded from every reported number.
+
+## 2026-11-10
+
+The granularity replication landed and **it replicates**. Four runs on the
+design-matched external corpus at k = 2, 4, 6, 9: primary outcome positive at
+11.8 sigma on test and 11.5 on validation, Spearman between the reachable
+bound and measured gain +1.000 on both splits at exact p = 0.042. Across the
+two corpora that is four perfect rank matches out of four, over eight runs and
+two growth-temperature databases. Section 6.2's claim now rests on two corpora
+rather than one.
+
+Two of 5.2e's secondary observations do not replicate, both hedged in advance
+in 5.2f:
+
+- `gain / bound` is 0.51x-0.66x on the primary corpus and 1.13x-1.58x here,
+  above the bound throughout. Pre-registered as reported-not-tested, which was
+  the right call. It must not be quoted as an efficiency figure anywhere.
+- Early saturation does not transfer, and this one cost a recommendation. On
+  the primary corpus only k=2 to k=4 was reliable (5.8 sigma) and later steps
+  were noise. Here every step is significant -- 2.6, 5.3, 4.7 sigma -- and nine
+  classes beat four by 8.8 sigma. "Four to six classes" was that corpus's
+  saturation point, so 5.1b, 6.2 and recommendation 3 now give a procedure
+  instead of a count: compute your corpus's reachability table and take the
+  largest k whose smallest class stays trainable.
+
+Checked and rejected an appealing explanation. The two corpora's bounds
+saturate in different places and both series were cut at the same k, so I
+tested whether the bound's step size predicts the measured step size. Pearson
++0.491 over six steps, with the primary corpus's k=4 to k=6 a clear
+counterexample (+0.116 pp of bound, +0.003 pp of gain). Recorded as a reading
+of two series, explicitly not as a measured relationship.
+
+Also checked the -v1 checkpoint files on gbal_k9, which the other three runs
+did not write. Not a duplicate launch: one call id, exit_code 0, wall clock
+mid-range and shorter than gbal_k2's, and the test report scored from the
+un-suffixed validation-selected checkpoint. No extra training behind the k=9
+figure, which matters because k=9 is one end of the primary outcome.
+
+Filled section 4.4 of the workshop version and removed its PENDING marker.
+Counts now twenty-five runs and roughly $77. The granularity series on the
+uncapped third corpus is the remaining adversarial test, roughly $14, not run.

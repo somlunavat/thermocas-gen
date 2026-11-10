@@ -19,3 +19,15 @@ Reports land at checkpoints/stage_a/<run>/{gate2,test}_report.txt on volume
 thermocas-gen-vol. Test is scored at the checkpoint validation selected, and
 capped at --gate2-limit, so 2,000 sequences -- the same cap as the 2026-10-27,
 2026-10-30 and 2026-11-03 batches.
+
+Landed 2026-11-10, all four exit_code 0. Wall clock 7,748s / 7,572s / 7,625s /
+7,635s for k2 / k4 / k6 / k9. The test split is 1,695 sequences so the
+--gate2-limit 2000 cap did not bind and all of it was scored. All four
+selected epoch=1-step=2000.ckpt by validation.
+
+gbal_k9 also wrote epoch=0-step=1500-v1.ckpt and last-v1.ckpt, which the other
+three did not. Checked rather than assumed benign: its wall clock is mid-range
+and shorter than gbal_k2's, and its test report was scored from the
+un-suffixed validation-selected checkpoint, so there is no extra training
+behind the k=9 figure. That matters because k=9 is one end of the primary
+outcome.

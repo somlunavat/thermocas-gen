@@ -53,7 +53,7 @@ a floor of 5% of residues per class -- below which a control token is too rare
 to train on -- caps what any binning can reach at 67% to 75%. The estimate is
 unigram, so it is a lower bound on what a contextual model extracts and not a
 ceiling on it: ten of our sixteen runs exceed their own, by up to 1.56x.
-We then measure what a model actually extracts, in twenty-one GPU runs that
+We then measure what a model actually extracts, in twenty-five GPU runs that
 differ only in how the label is defined -- byte-identical sequences, clusters
 and splits, so the comparison isolates label definition from corpus
 composition, which nothing in the related work does. How the label is binned
@@ -63,9 +63,9 @@ shuffle noise floor; thresholds below 35 degrees C give a small fraction of
 what is available above 40. Two further pre-registered tests, both with the
 direction fixed before launch, separate what the scale can and cannot do.
 Across granularity -- two, four, six and nine classes, each partitioned to
-keep classes trainable -- measured gain rises 2.5x as the bound rises 2.5x,
-ranking the four perfectly on both splits, and four classes already capture
-nine classes' gain to within 1.2 standard deviations. Across threshold
+keep classes trainable -- it ranks the four perfectly on two corpora and both
+splits, four perfect rank matches out of four, with measured gain rising as
+fast as the bound. Across threshold
 placement it fails: on a corpus chosen in advance so that the predictors
 disagree, a baseline that reads nothing from any corpus ranks four label
 definitions perfectly while the statistic ranks them no better than chance
@@ -139,7 +139,7 @@ measure that we hold everything except the label fixed. Our sweep variants are
 *relabelings*: `temp_bin` is recomputed from the recorded growth temperature in
 memory at startup, so every variant trains on byte-identical sequences,
 clusters and splits, and only the meaning of the control token changes. Across
-twenty-one runs on three corpora and two backbones we find that **how the label
+twenty-five runs on three corpora and two backbones we find that **how the label
 is defined is worth a factor of 3.9 to 4.2 in measured conditioning gain**,
 from +0.070% at cold thresholds to +0.273% on a plateau between 45 and 65
 degrees C on the primary corpus, and by comparable factors on the other two,
@@ -174,7 +174,7 @@ goes.
    every other corpus property. Nothing in the related work does this; its
    comparisons confound label definition with corpus composition.
 2. The measurement that label definition is worth 3.9x to 4.2x in conditioning
-   gain, over twenty-one runs on three corpora and two backbones, each verified
+   gain, over twenty-five runs on three corpora and two backbones, each verified
    against a shuffled-token control and a cluster-disjoint test split.
 3. An envelope over all binnings of a temperature database's labels, with the
    finding that the conventional two-class threshold reaches 23-30% of it, and
@@ -377,13 +377,12 @@ cluster-disjointness is enforced at the clustering stage and verified in each
 report.
 
 **Setup.** ProGen2-base with LoRA, stage A, 3,000 steps on a single A10.
-Twenty-one completed runs: eight thresholds on the primary corpus (section
-5.1), five on a design-matched second corpus (5.2b), three on a second
-backbone (5.2c), four on an unselected third corpus (5.2d), and four
-granularities on the primary corpus (5.2e) -- with 30, 55 and 75 degrees C
-shared between the first and third so they compare directly. Four more, the
-replication of 5.2e on the design-matched corpus (5.2f), were launched
-2026-11-09 and are not included in any number reported here.
+Twenty-five runs: eight thresholds on the primary corpus (section 5.1), five
+on a design-matched second corpus (5.2b), three on a second backbone (5.2c),
+four on an unselected third corpus (5.2d), four granularities on the primary
+corpus (5.2e) and four on the design-matched corpus (5.2f) -- with 30, 55 and
+75 degrees C shared between the first and third threshold sweeps so they
+compare directly.
 
 **Primary corpus.** 311,987 sequences, 113.8M residues, 47 distinct growth
 temperature values, 1,552 both-class clusters at the 45 degrees C threshold,
@@ -484,22 +483,27 @@ in bins that exist only in the arithmetic.
 **It also saturates early.** On the primary corpus five classes already reach
 +0.462% (69.9% of the envelope) and nine reach +0.496% (75.1%); the four
 additional classes buy 0.034 percentage points. The actionable form of this
-table is therefore *four to six classes*, not *as many as possible*, and that
-is a change any of the six systems in section 2 could make for free. Section
-5.2e measures it: four classes reach +0.245% on test against nine classes'
-+0.273%, a difference of 1.2 sigma.
+table is therefore *the largest k whose smallest class stays trainable*, not a
+fixed number, and reading it off your own corpus rather than ours. Sections
+5.2e and 5.2f are why the advice is a procedure and not a count: on the
+primary corpus four classes reach +0.245% against nine classes' +0.273%, a
+difference of 1.2 sigma, so four is enough there; on the design-matched corpus
+nine classes beat four by 8.8 sigma, so it is not. Either way it is a change
+any of the six systems in section 2 could make for free, since all six use
+two.
 
 Two cautions belong with this table, both in the text and not in a footnote.
 
 **The envelope is a bound, not a target.** It bounds what a perfect unigram
 predictor could take from the label; it says nothing about what a trained
-model will. Section 5.2e tests that directly, with the direction fixed before
-the runs were launched, and finds measured gain rising 2.5x as the bound rises
-2.5x -- `gain / bound` between 0.51x and 0.66x throughout, Spearman +1.000 on
-both splits. So "use more classes" does follow from this table, up to a point:
-the step from two classes to four is 5.8 sigma on test and every later step is
-within noise, which is why the recommendation below is four to six and not
-nine.
+model will. Sections 5.2e and 5.2f test that directly on two corpora, with the
+direction fixed before each batch was launched, and find the bound ranking the
+granularities perfectly on both -- Spearman +1.000 across four
+corpus-by-split combinations. So "use more classes" does follow from this
+table. What does not follow is a fixed number: the primary corpus saturates by
+four classes and the design-matched one has not saturated by nine. Nor does a
+stable efficiency figure: `gain / bound` is 0.51x-0.66x on one corpus and
+1.13x-1.58x on the other, so it must not be quoted as a general ratio.
 
 **Equal-mass binning is not available on these corpora, and the quantile rows
 of the sweep are not nested.** A single recorded temperature can hold more
@@ -982,6 +986,58 @@ gain is expected and `gain / bound` may fall below the 0.50x floor without
 bearing on the primary outcome, which is a difference between two runs and not
 a ratio to a bound.
 
+#### Outcome: it replicates, and two secondary observations do not
+
+| run | k | edges (C) | min class | bound | val gain | test gain | gain/bound |
+|---|---|---|---|---|---|---|---|
+| `gbal_k2` | 2 | 42 | 49.8% | +0.274% | +0.410% | +0.432% | 1.58x |
+| `gbal_k4` | 4 | 31,42,67 | 24.8% | +0.403% | +0.531% | +0.484% | 1.20x |
+| `gbal_k6` | 6 | 30,37,45,59,75 | 15.9% | +0.517% | +0.582% | +0.582% | 1.13x |
+| `gbal_k9` | 9 | 28,31,37,42,56,63,73,90 | 8.5% | +0.576% | +0.774% | +0.670% | 1.16x |
+
+All four passed both Gate 2 criteria, z from 25.1 to 53.2, and all four
+selected the same step-2,000 checkpoint by validation. Neither void condition
+applies. The primary outcome is **positive on both splits**: +0.364 pp at 11.5
+sigma on validation, +0.238 pp at 11.8 sigma on test. Spearman between the
+reachable bound and measured gain is **+1.000 on both splits**, exact p =
+0.042.
+
+**Across the two corpora that is four perfect rank matches out of four**, on
+eight runs, two growth-temperature databases and two independently computed
+reachability tables. This is the evidence section 6.2 rests on.
+
+Two secondary observations from 5.2e do not replicate, both hedged in advance
+and both reported here rather than in an appendix.
+
+**`gain / bound` is corpus-dependent and is not a band.** It was 0.51x-0.66x
+on the primary corpus and is 1.58x, 1.20x, 1.13x, 1.16x here -- above the
+bound throughout, which is unsurprising on the corpus where the project's
+largest exceedances were already measured (section 5.2b) and which section 3
+predicts of a unigram estimate against a contextual model. Section 5.2f
+pre-registered this as reported and not tested. The figure must not be quoted
+as a general efficiency.
+
+**Early saturation does not replicate, and this one costs us a
+recommendation.** On the primary corpus two classes to four was the only
+reliable step (5.8 sigma) and every later step was noise. Here every step is
+significant -- 2.6, 5.3 and 4.7 sigma -- and nine classes beat four by 8.8
+sigma. Four classes is not enough on this corpus, so section 5.1b's "four to
+six classes" was that corpus's saturation point and does not transfer. What
+replicates is the ordering, not the stopping point.
+
+An explanation consistent with both series, offered as such: the two bounds
+saturate in different places and both series were cut at the same k rather
+than at the same distance from saturation. The primary corpus's bound rises
++0.008 pp from k=6 to k=9 and its k=9 bound is already 75.1% of its envelope;
+this corpus's rises +0.060 pp and reaches 59.3%, with trainable granularities
+available to k=13. One series ran past its plateau and the other stopped short
+of it. We tested whether the bound's step size predicts the measured step size
+and it does not reliably -- Pearson +0.491 over the six steps, with the primary
+corpus's k=4 to k=6 a clear counterexample at +0.116 pp of bound for +0.003 pp
+of gain -- so this is a reading of two series and not a measured relationship.
+
+Full analysis: `results/granularity_20261109/measured.md`.
+
 ### 5.3 Sampling design is half the measurement
 
 The uncapped, unbalanced external corpus peaks at 35 degrees C instead, and
@@ -1080,10 +1136,19 @@ on the evidence of a single run. Section 5.2e refutes that with a
 better-designed version of the same experiment, and the replacement claim is
 sharper.
 
-**It ranks granularity perfectly.** Across k = 2, 4, 6 and 9, with the
-partition at each k chosen to maximise the smallest class's share of residues,
-Spearman between the reachable bound and measured gain is +1.000 on validation
-and on test, exact p = 0.042.
+**It ranks granularity perfectly, on two corpora.** Across k = 2, 4, 6 and 9,
+with the partition at each k chosen to maximise the smallest class's share of
+residues, Spearman between the reachable bound and measured gain is +1.000 on
+validation and on test, exact p = 0.042 -- on the primary corpus (5.2e) and
+again on the design-matched external corpus (5.2f), which draws its growth
+temperatures from a different database. Four perfect rank matches out of four,
+over eight runs.
+
+What it does *not* rank is how far to go. The primary corpus saturates by four
+classes and the design-matched one has not saturated by nine, and the bound's
+step size does not reliably predict the measured step size (Pearson +0.491
+over six steps, with one clear counterexample). The ordering transfers; the
+stopping point has to be read off each corpus's own reachability table.
 
 **It ranks threshold placement no better than chance, and its own optimum is a
 poor choice.** Section 5.2d measured rho +0.000 corpus-wide against a trivial
@@ -1218,7 +1283,7 @@ it can fail on a single tight family.
 is the finding we would most like a reader to act on, and it does not depend on
 the corpus statistic working -- which, on the evidence below, it does for
 choosing how many classes and not for choosing where to cut them. Across
-twenty-one runs, the choice of threshold moves measured
+twenty-five runs, the choice of threshold moves measured
 conditioning gain by a factor of 3.9 on the primary corpus, 3.8 on the
 design-matched one and 4.2 on the uncapped one, with the cold end of the range
 losing most of the available signal in all three. Every system in section 2
@@ -1274,14 +1339,21 @@ uncapped corpus appeared to peak at 35 degrees C, which turned out to be
 Swiss-Prot's 37 degrees C pile-up rather than anything about thermophilic
 sequence.
 
-**Use four to six classes rather than a threshold.** This is the one label
-recommendation the paper supports with a pre-registered test it predicted
-would fail. Partitioning the primary corpus into four classes instead of two
-raised measured conditioning gain from +0.110% to +0.245% on held-out test
-sequences, 5.8 sigma, and six and nine classes added nothing beyond noise. The
-bound says the same thing for a reason that transfers: a two-class threshold
-reaches 28-30% of a corpus's envelope, and four to six classes reach most of
-what class sizes allow. Every system in section 2 uses two.
+**Use several classes rather than a threshold, and let your own corpus set
+how many.** This is the one label recommendation the paper supports with a
+pre-registered test it predicted would fail, replicated on a second corpus.
+Four classes instead of two raised measured gain from +0.110% to +0.245% on
+the primary corpus, 5.8 sigma; on the design-matched corpus nine classes beat
+four by 8.8 sigma. Every system in section 2 uses two, and a two-class
+threshold reaches only 28-30% of a corpus's envelope.
+
+The count itself does not transfer -- the primary corpus saturates by four
+classes and the design-matched one does not saturate by nine -- so the
+procedure is what we recommend: compute the reachability table (section 5.1b),
+and take the largest k whose smallest class still holds enough of the corpus
+to train a control token on. The bound ranks the granularities correctly on
+both corpora, four perfect rank matches out of four, so it can be trusted for
+the ordering even where it cannot be trusted for the stopping point.
 
 **Do not use this statistic to choose the threshold -- only to choose the
 number of classes.** We set out to supply a denominator and we would have
@@ -1411,10 +1483,11 @@ no independent replication was found; cite them as reported.
 
 ## What is missing before submission
 
-Status 2026-11-09, after twenty-five runs. Every experiment in the plan has
+Status 2026-11-10, after twenty-five runs. Every experiment in the plan has
 been run, plus two granularity series that were not in it: section 5.2e, which
 refuted its own pre-registered prediction and became the paper's one positive
-result, and section 5.2f, which replicates it on a second corpus. What
+result, and section 5.2f, which replicated it on a second corpus and cost us
+the fixed class-count recommendation. No further GPU time is needed. What
 remains:
 
 - **A pass over sections 1-4 and 7-8 for length and citation style.** The
@@ -1427,8 +1500,8 @@ remains:
   that frame rather than as the thesis. Title changed accordingly. What is
   left is to re-read sections 1 and 8 as a pair once more, since they are
   where a reader decides what the paper claims.
-- **Extract the four-page workshop version**, drafted at
-  `paper/workshop.md`. Target: an ICML comp-bio workshop (WCB, ML4LMS,
+- **The four-page workshop version is drafted** at `paper/workshop.md`,
+  complete as of 2026-11-10 and carrying the replication. Target: an ICML comp-bio workshop (WCB, ML4LMS,
   AI4Science or similar). Their CFPs are not published until roughly April,
   with deadlines around May, so the constraint is not the calendar. Keep: the
   no-denominator argument with PRIME's table, the relabeling design, 5.1, 5.1b
@@ -1441,9 +1514,14 @@ remains:
 - **Nothing in the results is pending.** Figures regenerate from committed
   files via `scripts/17_figures.py`.
 
-Spend: roughly $63 of A10 time against the $31 originally estimated, over
-twenty-five runs. The overrun is the two pre-registered tests that were not in
-the original plan (5.2d and 5.2e) and the replication of the second (5.2f).
+Spend: roughly $77 of A10 time against the $31 originally estimated, over
+twenty-five runs. The overrun is the three pre-registered tests that were not
+in the original plan: 5.2d, 5.2e, and 5.2f replicating the second.
+
+Still available and not run: the granularity series on the uncapped third
+corpus, where the balance artifact is strongest and where 5.2d's threshold
+test failed. It is the adversarial case for 5.2e and 5.2f's shared claim, and
+roughly $14.
 
 Future work, flagged and not claimed: a corpus with a growth-temperature
 measurement independent of the culture-collection catalogues that Gosha and
