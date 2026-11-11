@@ -1,0 +1,49 @@
+Granularity series on the uncapped corpus, launched 2026-11-10,
+pre-registered in paper/draft.md section 5.2g (commit c138d31,
+immediately before these launches).
+
+Corpus: external (UniProtKB/Swiss-Prot reviewed prokaryotes in full, Engqvist
+growth temperatures, NO per-species cap and NO species balancing -- the
+corpus as the databases have it). 182,522 training sequences, 64,855,763
+residues, 77 distinct recorded temperatures. Relabeling only -- byte-identical
+sequences, clusters and splits across all four runs. Primary backbone, stage
+A, 3,000 steps, A10G, Gate 2 on 2,000 validation sequences, five shuffles.
+Edges are this corpus's own minimum-mass-maximising partitions, from
+results/prime_denominator_20261102/envelope_external.txt.
+
+run      k  edges                      min mass  min train seqs  bound      call id
+gext_k2  2  35                         49.4%     89,656          +0.1481%   fc-01M7413MEP1SX8EDXG64N0PYR6
+gext_k4  4  29,32,37                   18.5%     32,682          +0.2036%   fc-01M7413SKFBKF8S6WRRF9AQM99
+gext_k6  6  27,29,31,35,37             10.1%     18,012          +0.2566%   fc-01M7413YVE0FN5CKVXDJS17QPV
+gext_k9  9  26,28,29,30,31,35,37,38     7.4%     13,771          +0.3377%   fc-01M74144480EJA0J4WNFB6044W
+
+Envelope for this corpus is +0.4878% corrected, so k=9 reaches 69.2% of it and
+k=2 reaches 30.4%. The bound rises 2.28x from k=2 to k=9, against 2.5x on
+pretrain (5.2e) and 2.1x on external_balanced (5.2f).
+
+Bounds were recomputed to six decimals before launch rather than read off the
+three-decimal envelope table, and balanced_edges was re-run on all four k to
+confirm it returns exactly these edge sets. It does.
+
+Sequence populations per class are recorded because the quantile design this
+series replaced was abandoned on exactly that check: its smallest classes held
+482 and 313 sequences. This is the largest of the three corpora and the
+smallest class here holds 13,771, so no run is near the population floor.
+
+WHAT MAKES THIS THE ADVERSARIAL CASE. Refinement on this corpus buys
+resolution almost entirely inside the mesophilic pile -- eight of the k=9
+edges fall inside twelve degrees and one class holds every sequence above
+38 C (48,451 of 182,522). On external_balanced the k=9 edges span 28 to 90.
+So this series varies resolution within a narrow band while leaving the
+thermophilic tail unresolved, which is not the question 5.2e and 5.2f
+answered. It is also the corpus where the statistic already lost once, on
+threshold placement in 5.2d.
+
+Reports land at checkpoints/stage_a/<run>/{gate2,test}_report.txt on volume
+thermocas-gen-vol. Test is scored at the checkpoint validation selected
+(scripts/11_train.py:843) and capped at --gate2-limit (scripts/11_train.py:857),
+so 2,000 sequences -- the same cap as the 2026-10-27, 2026-10-30, 2026-11-03
+and 2026-11-09 batches, and the test split here is far larger than that cap so
+it WILL bind, unlike on external_balanced.
+
+PENDING. Nothing is written below this line until all four land.
