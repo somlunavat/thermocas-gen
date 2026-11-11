@@ -2346,3 +2346,61 @@ figure, which matters because k=9 is one end of the primary outcome.
 Filled section 4.4 of the workshop version and removed its PENDING marker.
 Counts now twenty-five runs and roughly $77. The granularity series on the
 uncapped third corpus is the remaining adversarial test, roughly $14, not run.
+
+## 2026-11-10 (second entry): the granularity series on the uncapped corpus
+
+Four runs, `gext_k2/k4/k6/k9` on `configs/external.yaml`, pre-registered in
+draft section 5.2g at `c138d31` and launched at `67065a3`. The adversarial
+case: no per-species cap, no balancing, and the corpus where the statistic had
+already lost once on threshold placement (5.2d).
+
+Both pre-registered outcomes fired and they point in opposite directions.
+
+- **Primary, positive.** Nine classes beat two by +0.119 pp at 9.4 sigma on
+  test (+0.050 pp, 5.6 sigma on validation). The prediction on record is met
+  and the resolution claim survives on the corpus we did not build. The null
+  that would have made our sampling design load-bearing for the paper's one
+  positive pre-registered finding did not happen.
+- **Secondary, failed.** Spearman between bound and measured gain is +0.200 on
+  test (exact p 0.458) and +0.800 on validation, against +1.000 and p 0.042 on
+  both earlier corpora. This is the *narrower* refutation 5.2g named in
+  advance, arriving by the mechanism it named: a k=4/k=6 inversion at bounds
+  0.053 pp apart. The tally is now four perfect rank matches out of six
+  corpus-split combinations.
+
+Gate 2 failed on three of four runs. Every failure is on the SIZE criterion;
+all four are significant at z 6.2 to 27.2 against a required 3.0, and the
+rarest class holds 7.4% of residues against the 5% floor. Neither void
+condition applies, and 5.2g said before launch that a size failure does not
+void an outcome defined as a difference between two runs. Writing that clause
+in advance is the only reason this result is reportable rather than a call made
+after seeing the numbers.
+
+The failure's shape is narrower than "the bound mis-ranks". The only paying
+step is k=6 to k=9 at 8.5 sigma, and it is the step with the *smaller* bound
+increment; k=2, k=4 and k=6 are tied within 0.7 sigma while the bound rises
+1.7x across them. A rank correlation over four points with three tied is close
+to uninformative.
+
+Post-hoc mechanism, recorded as a hypothesis with an unrun test. k=9 is the
+first of these partitions to cut at 38 and separate the 18,922 sequences above
+38 C from the Swiss-Prot 37 C pile; k=2, 4 and 6 all lump them together. So
+the refinement that paid was one specific cut, not refinement in general, which
+means placement re-enters inside a granularity series built to hold balance
+fixed. The matched-bound test: `{30,37,38}` carries k=6's bound to within
+0.0016 pp with four classes and should measure near +0.191% rather than
++0.062%. One run, ~$3.50. NOT RUN.
+
+Paper changes: 5.2g outcome written; 6.2 qualified (coarse contrast on three
+corpora, full ordering on two of three, and the dichotomy it is named for
+reopened by the 38 C observation); 5.1b gained a third caution, that a
+reachability table counts classes and cannot see which cuts they make; abstract,
+section 8 recommendation 3, and the limitations updated; 5.2f's "four out of
+four" marked superseded in part rather than rewritten. Workshop gained section
+4.5 and is now ~2,890 words, over its four-page budget, with the trim order
+recorded in its header.
+
+`gain / bound` is 0.24x-0.57x here. Project-wide range is now 0.24x to 1.58x
+and the figure is confirmed for the third time as not an efficiency.
+
+Spend: ~$13 for this batch, ~$90 over twenty-nine runs.

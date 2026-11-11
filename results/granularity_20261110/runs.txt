@@ -46,4 +46,31 @@ so 2,000 sequences -- the same cap as the 2026-10-27, 2026-10-30, 2026-11-03
 and 2026-11-09 batches, and the test split here is far larger than that cap so
 it WILL bind, unlike on external_balanced.
 
-PENDING. Nothing is written below this line until all four land.
+Landed 2026-11-10. Wall clock 7,725s / 7,980s / 7,722s / 7,862s for
+k2 / k4 / k6 / k9. All four selected step 2,500 by validation. All four scored
+2,000 of the 11,263 test sequences, so the cap bound as predicted above.
+
+EXIT CODES. gext_k4 returned 0; gext_k2, gext_k6 and gext_k9 returned 3, which
+is scripts/11_train.py's Gate 2 failure code and not a crash -- all reports
+were written. Every one of the three failures is on Gate 2's SIZE criterion
+(gain/ceiling under 0.50x). All four runs are SIGNIFICANT on both splits, z
+from 6.2 to 27.2 against a required 3.0. Section 5.2g's void condition (i) is
+z < 3 and condition (ii) is a rarest class under 5% of residues (minimum here
+7.4%), so neither applies, and 5.2g stated in advance that a size failure does
+not void this test.
+
+gext_k6's test report was scored from epoch=0-step=2500-v1.ckpt, a suffixed
+duplicate, where the other three used un-suffixed files. Checked rather than
+assumed benign: the provenance line records it as validation-selected and
+gext_k6 has the shortest wall clock of the four, so there is no extra training
+behind it. It matters because gext_k6 is one of the two runs whose inversion
+drives the rank result.
+
+OUTCOME, both halves pre-registered. Primary positive: +0.119 pp at 9.4 sigma
+on test, +0.050 pp at 5.6 sigma on validation. Secondary rank correlation
+FAILED: Spearman +0.200 (exact p 0.458) on test and +0.800 (p 0.167) on
+validation, against +1.000 and p 0.042 on both earlier corpora. That is the
+narrower refutation 5.2g named in advance, by the mechanism it named -- a
+k=4/k=6 inversion at bounds 0.053 pp apart.
+
+Analysis in measured.md. Reports copied into runs/.

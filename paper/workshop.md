@@ -5,8 +5,15 @@ Target: an ICML computational-biology workshop (WCB, ML4LMS, AI4Science).
 Every number here is carried from the full draft and is wired to a file under
 `results/`; section numbers in brackets point back to the draft.
 
-**Status note.** Complete as of 2026-11-10. Section 4.4's replication was
-pre-registered in draft section 5.2f before launch and has landed.
+**Status note.** Complete as of 2026-11-10. Sections 4.4 and 4.5 were both
+pre-registered in the draft before launch (5.2f, 5.2g) and both have landed.
+4.5 is the one that cost a claim: the perfect rank correlation does not
+survive on the corpus we did not build, and the abstract and section 6 say so.
+
+**Length.** Now ~2,890 words as the file stands, against ~2,360 at extraction, which is over four
+pages. If it has to come down, 4.5's post-hoc paragraph is the first cut and
+section 3's envelope table the second; the three granularity results and the
+placement failure all stay.
 
 ## Abstract
 
@@ -22,14 +29,17 @@ trains on, and at a database's native temperature resolution it bounds every
 coarser binning of those labels. Across three prokaryotic corpora that
 envelope is +0.49% to +0.97%, the best two-class threshold reaches 28-30% of
 it, and a floor of 5% of residues per class caps any binning at 67-75%. In
-twenty-five runs that vary only the label definition within a corpus -- on
+twenty-nine runs that vary only the label definition within a corpus -- on
 byte-identical sequences, clusters and splits -- label definition moves
-measured conditioning gain by a factor of 3.9 to 4.2. Three pre-registered
-tests divide what the scale can do from what it cannot: across granularity it
-ranks label definitions perfectly on two corpora and both splits, while across
-threshold placement it ranks no better than chance and its own preferred
-threshold measures 6.4 standard deviations worse than the conventional one. The scale chooses how many
-classes, not where to put them.
+measured conditioning gain by a factor of 3.9 to 4.2. Four pre-registered
+tests divide what the scale can do from what it cannot. Across granularity,
+nine classes beat two on all three corpora at 9.4 to 11.8 standard deviations,
+but the finer ordering holds only on the two corpora we balanced by design and
+fails on the one we left as the databases have it. Across threshold placement
+the scale fails outright: it ranks no better than chance and its own preferred
+threshold measures 6.4 standard deviations worse than the conventional one. So
+it is a guide to how many classes rather than to where to put them, and on an
+unbalanced corpus only to the coarse comparison.
 
 ## 1. There is no denominator
 
@@ -212,9 +222,7 @@ partitions, pre-registered with the direction fixed [draft 5.2f].
 | 9 | +0.576% | +0.670% | 1.16x |
 
 The primary outcome is positive at 11.8 sigma on test and 11.5 on validation,
-and Spearman is **+1.000 on both splits** again. **Across the two corpora that
-is four perfect rank matches out of four**, over eight runs and two
-growth-temperature databases.
+and Spearman is **+1.000 on both splits** again.
 
 Two secondary observations do not replicate, both hedged in advance.
 `gain / bound` is 0.51-0.66x on the primary corpus and 1.13-1.58x here, so it
@@ -223,6 +231,38 @@ saturation does not transfer: on the primary corpus only the two-to-four step
 was reliable, while here every step is significant and nine classes beat four
 by 8.8 sigma. The *ordering* replicates; the stopping point is corpus-specific
 and has to be read off that corpus's reachability table.
+
+### 4.5 On the corpus we did not build, only the coarse contrast survives
+
+The third series runs the same four granularities on the uncapped corpus -- no
+per-species cap, no balancing -- pre-registered with two distinct refutations
+named in advance [draft 5.2g].
+
+| $k$ | bound | test gain |
+|---|---|---|
+| 2 | +0.148% | +0.072% |
+| 4 | +0.204% | +0.070% |
+| 6 | +0.257% | +0.062% |
+| 9 | +0.338% | **+0.191%** |
+
+The primary outcome replicates: nine classes beat two by +0.119 pp at 9.4
+sigma. **The rank correlation does not**, falling to +0.200 on test (exact
+p = 0.458) and +0.800 on validation, neither significant -- the narrower of
+the two refutations pre-registered for this series, arriving by the mechanism
+named for it, a $k{=}4$/$k{=}6$ inversion at bounds 0.053 pp apart. Three of
+the four runs are tied within 0.7 sigma while the bound rises 1.7x across
+them: it separated the extremes and carried no information about the middle.
+**Four perfect rank matches out of six corpus-split combinations, both
+failures on the unbalanced corpus.** Gate 2 failed on three runs, all on its
+size criterion, with every run significant at z from 6.2 to 27.2; 5.2g stated
+before launch that a size failure does not void an outcome defined as a
+difference between two runs.
+
+Post-hoc and not a result: $k{=}9$ is the first of these partitions to cut
+above the 37 degrees C pile, separating the 18,922 sequences above 38 degrees
+C from it. The refinement that paid was one cut rather than refinement as
+such, so placement re-enters inside a granularity series. The matched-bound
+test that would settle it is specified and unrun.
 
 ## 5. Recommendations
 
@@ -236,10 +276,16 @@ and has to be read off that corpus's reachability table.
 3. **Use several classes rather than a threshold, and let your own corpus set
    how many.** Four classes instead of two raised measured gain from +0.110%
    to +0.245% on the primary corpus, 5.8 sigma; on the design-matched corpus
-   nine classes beat four by 8.8 sigma. All six surveyed systems use two. The
-   count does not transfer, so compute the reachability table and take the
-   largest $k$ whose smallest class stays trainable; the bound can be trusted
-   for the ordering even where it cannot be trusted for the stopping point.
+   nine classes beat four by 8.8 sigma; on the uncapped corpus nothing below
+   nine beat two at all. All six surveyed systems use two. The count does not
+   transfer, so compute the reachability table and take the largest $k$ whose
+   smallest class stays trainable -- that was the best of the four on all
+   three corpora. Trust the bound for "more classes, up to what you can
+   train" and not for the ranking in between, which it got wrong on the
+   unbalanced corpus. And read the edges, not just the row: check your
+   partition separates the temperature range you care about, because on the
+   uncapped corpus the step that paid was the first one to cut above the
+   37 degrees C pile and the bound gave no sign that cut mattered.
 4. **Do not use this statistic to choose the threshold.** Convention, or "well
    above the mode of your temperature distribution", does better.
 
@@ -247,13 +293,17 @@ and has to be read off that corpus's reachability table.
 
 Prokaryotes only. One architecture family; the second backbone is a capacity
 comparison, not an architecture-independence result. The granularity result is
-four points per corpus on two corpora, and $n$=4 cannot establish agreement --
-a perfect rank match on four points is what four points can show at best, even
-four times over. `gain / bound` does not transfer between corpora and we draw
-no efficiency claim from it. Where the gain stops paying is corpus-specific,
-so the class-count advice is a procedure rather than a number. The uncapped
-third corpus, where the balance artifact is strongest, has not had a
-granularity series run on it. Growth temperature
+four points per corpus on three corpora, and $n$=4 cannot establish agreement:
+a perfect rank match on four points is what four points can show at best, and
+it held on two corpora out of three. On the third, three of the four points
+are tied within 0.7 sigma, so the rank correlation there is close to
+uninformative in either direction. `gain / bound` does not transfer between
+corpora -- 0.24x to 1.58x across the three -- and we draw no efficiency claim
+from it. Where the gain stops paying is corpus-specific, so the class-count
+advice is a procedure rather than a number. Our account of why the ordering
+failed on the uncapped corpus, that one cut above the 37 degrees C pile did
+the work, is post-hoc; the matched-bound test that would settle it is
+specified and unrun. Growth temperature
 is a property of an organism and not of a protein, so every label here is a
 proxy. Nothing in this paper is an assay, and no claim is made about
 thermostability prediction.
