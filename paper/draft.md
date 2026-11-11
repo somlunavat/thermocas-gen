@@ -1038,6 +1038,119 @@ of gain -- so this is a reading of two series and not a measured relationship.
 
 Full analysis: `results/granularity_20261109/measured.md`.
 
+### 5.2g The adversarial corpus: does it replicate where placement failed? Pre-registered 2026-11-10
+
+**Written before these four runs were launched.** Call ids in
+`results/granularity_20261110/runs.txt`; the commit carrying this section
+immediately precedes the launch commit.
+
+Sections 5.2e and 5.2f both ran on corpora we assembled with the same
+per-species cap and the same species balancing. Four perfect rank matches out
+of four is the paper's strongest positive result, and it has so far only been
+measured where our own sampling design flattened the temperature
+distribution. This is the third corpus: `external`, uncapped and unbalanced,
+the databases as they stand.
+
+**Why this is the adversarial case, and it is adversarial in two separate
+ways.**
+
+First, it is the corpus where the statistic has already lost once. Section
+5.2d put the corpus statistic against `-|edge - 55|` on threshold placement
+and it scored Spearman +0.000 against the baseline's +1.000; this corpus is
+the one built to put that baseline at risk, because Swiss-Prot piles up at 37
+degrees C and so the statistic's preferred threshold (35) and the fixed-centre
+baseline disagree. If the resolution claim is going to break anywhere, the
+corpus whose temperature distribution already broke the placement claim is
+where to look.
+
+Second, and this is the sharper problem, **refinement on this corpus buys
+resolution almost entirely inside the mesophilic pile.** The
+minimum-mass-maximising edges at k=9 are 26, 28, 29, 30, 31, 35, 37, 38 --
+eight edges inside twelve degrees, with one class holding every sequence above
+38 degrees C (48,451 of 182,522 training sequences). On the design-matched
+corpus the same k=9 edges span 28 to 90. So the two earlier series varied
+resolution across the whole temperature range, and this one varies it across a
+narrow band while leaving the thermophilic tail unresolved. Whether the
+statistic reads *that* as resolution is a different question from the one
+5.2e and 5.2f answered, and it is the question this run asks.
+
+**Design.** Four runs on `external`, differing only in `--bin-edges`;
+byte-identical sequences, clusters and splits across all four; primary
+backbone; stage A; 3,000 steps; A10G; Gate 2 on 2,000 validation sequences;
+five shuffles. Edges are this corpus's own minimum-mass-maximising partitions,
+from `results/prime_denominator_20261102/envelope_external.txt`.
+
+| run | k | edges (C) | smallest class (residues) | smallest class (train seqs) | bound |
+|---|---|---|---|---|---|
+| `gext_k2` | 2 | 35 | 49.4% | 89,656 | +0.148% |
+| `gext_k4` | 4 | 29,32,37 | 18.5% | 32,682 | +0.204% |
+| `gext_k6` | 6 | 27,29,31,35,37 | 10.1% | 18,012 | +0.257% |
+| `gext_k9` | 9 | 26,28,29,30,31,35,37,38 | 7.4% | 13,771 | +0.338% |
+
+Sequence populations are recorded here because the quantile design this series
+replaced was abandoned on exactly that check (section 5.1b). This is the
+largest of the three corpora and the smallest class at k=9 still holds 13,771
+training sequences, so no run here is near the population floor.
+
+**Primary outcome, fixed now: the sign of (test gain at k=9) - (test gain at
+k=2).** The bound rises 2.3x across that span, against 2.5x on `pretrain` and
+2.1x on `external_balanced`.
+
+*The prediction on record is that this difference is positive beyond two
+standard deviations*, replicating 5.2e and 5.2f. The mechanism in section 6.2
+does not depend on the sampling design: holding "best-balanced partition at
+this k" fixed removes balance as the free variable on any corpus, and what is
+left varying is resolution. If that mechanism is right, the sampling recipe
+should be irrelevant here and this should replicate.
+
+**What would refute it.** A difference that is negative, or within two
+standard deviations of zero. That outcome would be the most consequential
+negative result in the paper, and it is worth saying now what it would cost,
+because the temptation afterwards would be to call this corpus a special case.
+It would mean the resolution claim holds on corpora we balanced and fails on
+the corpus we did not, which makes our sampling design load-bearing for the
+paper's one positive pre-registered finding. Section 6.2 would have to be
+narrowed from "the statistic ranks resolution" to "it ranks resolution on
+corpora whose temperature distribution has been flattened by design", section
+5.1b's reachability procedure would carry that caveat, and the honest reading
+would be that the measure works on corpora built to make it work. We are not
+reserving the right to attribute a null here to the corpus being awkward.
+
+**A narrower refutation is also possible and is named separately.** The
+primary outcome could come back positive while the Spearman is below +1.000 --
+for instance if k=4 and k=6 invert, both being partitions of the same
+mesophilic pile at bounds only 0.053 pp apart. That would not refute the
+k=2-to-k=9 claim but would end the run of perfect rank matches, and section
+6.2 would report three corpora with two perfect matches rather than three out
+of three. It would also be the first evidence that the bound's resolution
+reading degrades when refinement is concentrated rather than spread, which is
+a more specific and more useful claim than either a flat replication or a flat
+null.
+
+**Secondary.** Spearman between this corpus's reachable bound and measured
+test gain across the four runs, exact one-sided permutation p over all 24
+relabelings. `gain / bound` is reported and not tested: it was 0.51x-0.66x on
+one corpus and 1.13x-1.58x on the other, section 5.2f already retracted it as
+a band, and no value here will be treated as a prediction met or missed.
+Whether every step is significant is likewise reported only -- 5.2e and 5.2f
+disagreed about where saturation falls, so we have no prediction to make about
+a third corpus.
+
+**Void conditions**, and the letter of them is what counts.
+
+(i) Any run failing Gate 2's **significance** criterion, z < 3 against the
+shuffle spread.
+
+(ii) Any run whose rarest class holds under 5% of the corpus's residues. The
+edges above are chosen to prevent this and the table records the figure so it
+can be checked.
+
+**A Gate 2 failure on the size criterion does not void this test**, for the
+reason given in 5.2f: the primary outcome is a difference between two runs,
+not a ratio to a bound. **Nor does a disagreement between the validation and
+test splits** -- the test figure is the pre-registered one, as in 5.2e, and
+the validation figure is reported beside it.
+
 ### 5.3 Sampling design is half the measurement
 
 The uncapped, unbalanced external corpus peaks at 35 degrees C instead, and
@@ -1383,14 +1496,15 @@ perplexity quantity for its temperature label at all, and PRIME's downstream
 Spearman cannot be converted into one without inventing the bridge. So the
 division is not available to us or to anyone, which is the paper's thesis
 stated as a failed experiment rather than as a complaint, and it is why the
-recommendation above is to report the shuffled-label gain. Beyond that: the
-granularity series on a second corpus, to see whether rho +1.000 and a
-near-constant `gain / bound` are properties of the measure or of this corpus;
-a third corpus with a growth-temperature measurement genuinely independent of the
-culture-collection catalogues that Gosha and Engqvist both scrape, and a second
-architecture family to turn section 5.2c from a capacity comparison into an
-architecture-independence result. Both are flagged as future work and neither
-is claimed here.
+recommendation above is to report the shuffled-label gain. Beyond that, and all flagged as future work
+rather than claimed here: a corpus whose growth temperatures are measured
+independently of the culture-collection catalogues that Gosha and Engqvist
+both scrape, which is the one confound no amount of corpus-count buys out; a
+second architecture family, to turn section 5.2c from a capacity comparison
+into an architecture-independence result; and a granularity series whose
+members are spaced by distance from the bound's saturation point rather than
+cut at the same k, which is the design section 5.2f's two series could not
+distinguish from each other.
 
 ## Figures
 
@@ -1518,10 +1632,14 @@ Spend: roughly $77 of A10 time against the $31 originally estimated, over
 twenty-five runs. The overrun is the three pre-registered tests that were not
 in the original plan: 5.2d, 5.2e, and 5.2f replicating the second.
 
-Still available and not run: the granularity series on the uncapped third
-corpus, where the balance artifact is strongest and where 5.2d's threshold
-test failed. It is the adversarial case for 5.2e and 5.2f's shared claim, and
-roughly $14.
+**Launched 2026-11-10 and pending:** the granularity series on the uncapped
+third corpus, pre-registered in section 5.2g. It is the adversarial case for
+5.2e and 5.2f's shared claim -- the corpus where the balance artifact is
+strongest, where 5.2d's threshold test failed, and where refinement buys
+resolution almost entirely inside the mesophilic pile. Roughly $14. Section
+5.2g carries the prediction and what would refute it; no other section depends
+on the outcome, and a null there narrows section 6.2 rather than leaving a
+gap.
 
 Future work, flagged and not claimed: a corpus with a growth-temperature
 measurement independent of the culture-collection catalogues that Gosha and
