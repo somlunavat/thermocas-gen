@@ -2404,3 +2404,69 @@ recorded in its header.
 and the figure is confirmed for the third time as not an efficiency.
 
 Spend: ~$13 for this batch, ~$90 over twenty-nine runs.
+
+## 2026-11-14: the matched-bound placement test, and 5.2g explained
+
+Two runs on `external`, pre-registered in draft 5.2h at `da4b6a2` and launched
+at `2c852e4`. `gplc_nest` = gext_k6's edges plus one at 38 (k=7, bound
++0.3154%). `gplc_match` = {30,37,38} (k=4, bound +0.2550%, matched to
+gext_k6's +0.2566% within 0.0016 pp).
+
+**Both pre-registered outcomes met on both splits.**
+
+- Primary: gplc_nest - gext_k6 = **+0.133 pp at 9.8 sigma** on test (+0.044 pp,
+  3.1 sigma on validation). Predicted positive >2 sigma and >= +0.065 pp.
+  Measured +0.133 pp = **103% of the +0.129 pp that k=6 to k=9 bought.** One
+  edge does all of it.
+- Secondary (discriminating): gplc_match - gext_k6 = **+0.095 pp at 6.9 sigma**
+  at a matched bound (+0.024 pp, 2.3 sigma on validation).
+
+Measured: gplc_nest +0.195% test, gplc_match +0.157% test. Both PASSED Gate 2
+on test at 0.62x, the two highest ratios this corpus has produced. Both exited
+3 from the validation gate failing on size (0.46x, 0.49x); all four
+significance checks pass (test z 21.4/16.8, val z 12.5/21.7), so no void
+condition applies and 5.2h said in advance a size failure does not void a
+between-run difference.
+
+**Of 5.2h's three pre-registered explanations, one survives and two are
+refuted.** Class count refuted with class count held EXACTLY fixed: gplc_match
+vs the four-class gext_k4 is +0.087 pp at 7.7 sigma. The bound refuted at a
+matched bound -- which 5.2h committed in advance to calling a failure of the
+bound rather than a success.
+
+**The decomposition is an interaction, cleaner than the hypothesis.** Without a
+cut above the 37 C pile, refinement buys nothing: k2->k4 -0.002, k4->k6 -0.008,
+k2->k6 -0.010 pp, every point estimate pointing the wrong way. With the cut:
+k4->k7 +0.038 pp (2.9 sigma), k7->k9 -0.004 pp. So the cut is worth +0.09 to
++0.13 pp, class count is worth +0.038 pp, and class count only pays once the
+cut is present. gplc_nest (k=7) is indistinguishable from gext_k9 (k=9) at 0.3
+sigma. All six runs rank by whether they contain the cut, regardless of k.
+
+**Mechanism: the modal temperature was swamping the tail.** 37 C holds 26.4% of
+this corpus's sequences and only 10.8% lie above it, so [37,inf) was 53,941
+modal against 21,941 above -- 71% one recorded temperature. The 38 edge removes
+the mode from the top class and that is the whole of its effect.
+
+**Diagnostic, post-hoc on three corpora, retro-predicts 3/3.** Modal mass vs
+mass above the mode: pretrain 0.47x and external_balanced 0.28x (tail-dominated,
+granularity rho +1.000 on both); external 2.46x (mode-dominated, rho +0.200).
+On the first two no partition's top class contained the mode at all, so there
+was nothing for a cut to fix. Labelled a hypothesis with a named test, NOT a
+validated rule -- three points and a ratio is pattern-matching.
+
+NOT claimed, per 5.2h's advance commitments: that 38 C is special (both runs
+share that edge, so function and temperature are unseparated -- we name the
+function); any rescue of the bound; validation of the diagnostic.
+
+Paper changes: 5.2h outcome written; 6.2 retitled and restructured (the
+dichotomy inverts on a mode-dominated corpus, and the bound sees neither
+resolution nor placement there); 5.1b's third caution becomes measured and
+gains the diagnostic as a pre-check; abstract gains the placement result;
+section 8 recommendation 3 gains the mode/tail check; counts to thirty-one runs
+and ~$97.
+
+Workshop gained 4.6 and is now ~3,400 words against a ~2,400 budget. A
+three-step cut plan is recorded in its header; the merge of 4.2/4.4/4.5 into
+one subsection is the first item. THIS IS THE MAIN OUTSTANDING TASK.
+
+Spend: ~$6.5 this batch, ~$97 over thirty-one runs.

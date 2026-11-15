@@ -56,4 +56,38 @@ thermocas-gen-vol. Test is scored at the validation-selected checkpoint and
 capped at --gate2-limit, so 2,000 of 11,263 -- the cap will bind, as it did on
 the 5.2g batch.
 
-PENDING. Nothing is written below this line until both land.
+Landed 2026-11-14. Wall clock 8,052s (gplc_nest) and 7,754s (gplc_match).
+Both selected step 2,500 by validation, as all four 5.2g runs did. Both scored
+2,000 of 11,263 test sequences.
+
+EXIT CODES. Both returned 3. That is the Gate 2 failure code, from the
+VALIDATION gate failing on size (0.46x and 0.49x against a required 0.50x).
+Both runs PASSED Gate 2 on TEST, at 0.62x -- the two highest ratios in this
+corpus's series. All four significance checks pass: test z 21.4 and 16.8,
+validation z 12.5 and 21.7. Void condition (i) is z < 3 and (ii) is a rarest
+class under 5% (both 9.93%), so neither applies, and 5.2h said in advance that
+a size failure does not void an outcome defined as a difference between runs.
+
+OUTCOME. Both pre-registered predictions met on both splits.
+
+  primary    gplc_nest - gext_k6  = +0.133 pp (9.8 sigma) on test
+                                    +0.044 pp (3.1 sigma) on validation
+             predicted positive >2 sigma AND >= +0.065 pp. Measured +0.133 pp,
+             which is 103% of the +0.129 pp that k=6 to k=9 bought.
+
+  secondary  gplc_match - gext_k6 = +0.095 pp (6.9 sigma) on test
+                                    +0.024 pp (2.3 sigma) on validation
+             at bounds matched to 0.0016 pp. Predicted positive >2 sigma.
+
+  measured gains: gplc_nest +0.195% test / +0.144% val
+                  gplc_match +0.157% test / +0.124% val
+
+EXPLANATIONS. The cut account survives. Class count is refuted with k held
+exactly fixed: gplc_match and gext_k4 are both k=4 and differ only in edge
+placement, +0.087 pp at 7.7 sigma. The bound is refuted at a matched bound,
+and that is a failure of the bound rather than a success, as 5.2h said in
+advance.
+
+Analysis in measured.md, including the decomposition (the cut is worth +0.09
+to +0.13 pp, class count +0.038 pp and only once the cut is present) and the
+mode/tail diagnostic, which is post-hoc on three corpora and labelled as such.

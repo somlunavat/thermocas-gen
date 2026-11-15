@@ -5,15 +5,33 @@ Target: an ICML computational-biology workshop (WCB, ML4LMS, AI4Science).
 Every number here is carried from the full draft and is wired to a file under
 `results/`; section numbers in brackets point back to the draft.
 
-**Status note.** Complete as of 2026-11-10. Sections 4.4 and 4.5 were both
-pre-registered in the draft before launch (5.2f, 5.2g) and both have landed.
-4.5 is the one that cost a claim: the perfect rank correlation does not
-survive on the corpus we did not build, and the abstract and section 6 say so.
+**Status note.** Complete as of 2026-11-14. Sections 4.4, 4.5 and 4.6 were
+each pre-registered in the draft before launch (5.2f, 5.2g, 5.2h) and all have
+landed. 4.5 cost a claim -- the perfect rank correlation does not survive on
+the corpus we did not build -- and 4.6 explains why and is arguably the
+sharpest result in the paper.
 
-**Length.** Now ~2,890 words as the file stands, against ~2,360 at extraction, which is over four
-pages. If it has to come down, 4.5's post-hoc paragraph is the first cut and
-section 3's envelope table the second; the three granularity results and the
-placement failure all stay.
+**Length: this needs cutting, and it is the main outstanding task.** ~3,400
+words as the file stands, against ~2,360 at extraction and a four-page budget
+of roughly 2,400, so about 1,000 words have to go. The content is right; there
+are now four granularity subsections (4.2, 4.4, 4.5, 4.6) and that is one more
+than four pages hold.
+
+Cut in this order, and do not cut past item 3:
+
+1. **Merge 4.2, 4.4 and 4.5 into one subsection** with a single table covering
+   all three corpora, one paragraph for the positive primary outcomes and one
+   for the rank-correlation failure. Saves ~450 words and loses no number the
+   recommendations depend on.
+2. **Cut section 3's envelope table to the three corpus-level figures** named
+   in the abstract, leaving the per-$k$ rows to the draft. Saves ~200 words.
+3. **Compress 4.6's decomposition paragraph** to its two sigma figures and
+   drop the mode/tail table, keeping the ratio in prose. Saves ~250 words.
+
+What must survive at full strength: the no-denominator argument with PRIME's
+table, the 3.9-4.2x measurement, the placement failure (4.3), 4.6's two
+pre-registered outcomes, and every "we do not claim" sentence. Those last are
+the first thing a reviewer will look for and the last thing to cut.
 
 ## Abstract
 
@@ -37,9 +55,16 @@ nine classes beat two on all three corpora at 9.4 to 11.8 standard deviations,
 but the finer ordering holds only on the two corpora we balanced by design and
 fails on the one we left as the databases have it. Across threshold placement
 the scale fails outright: it ranks no better than chance and its own preferred
-threshold measures 6.4 standard deviations worse than the conventional one. So
-it is a guide to how many classes rather than to where to put them, and on an
-unbalanced corpus only to the coarse comparison.
+threshold measures 6.4 standard deviations worse than the conventional one. On
+the unbalanced corpus we then find what it was missing. Its labels pile up at
+37 degrees C, and every partition below nine classes left that pile sharing a
+class with the whole range above it; **adding one edge to separate them is
+worth +0.133 pp at 9.8 standard deviations, more than the entire measured
+difference between two classes and nine**, and four classes containing that
+edge beat six without it at a matched bound. Which cuts a partition contains
+can matter more than how many, and neither class count nor the bound sees it.
+The condition is one ratio from a label table: the modal temperature's mass
+against the mass above it.
 
 ## 1. There is no denominator
 
@@ -264,6 +289,40 @@ C from it. The refinement that paid was one cut rather than refinement as
 such, so placement re-enters inside a granularity series. The matched-bound
 test that would settle it is specified and unrun.
 
+### 4.6 It was one cut, and no statistic here saw it
+
+Section 4.5's explanation was post-hoc, so it was pre-registered and tested
+[draft 5.2h]. Two runs: `gplc_nest` is $k{=}6$'s partition with one edge added
+at 38 degrees C and nothing else changed; `gplc_match` carries $k{=}6$'s bound
+to within 0.0016 pp using four classes instead of six.
+
+| run | $k$ | bound | test gain | vs `gext_k6`'s +0.062% |
+|---|---|---|---|---|
+| `gplc_nest` | 7 | +0.3154% | **+0.195%** | +0.133 pp, 9.8 sigma |
+| `gplc_match` | 4 | +0.2550% | **+0.157%** | +0.095 pp, 6.9 sigma |
+
+Both predictions met on both splits. The single added edge is worth **103% of
+what three extra classes appeared to buy**. Of the three explanations
+pre-registered, the cut survives and two are refuted: class count with class
+count held exactly fixed (`gplc_match` against the four-class `gext_k4`,
++0.087 pp at 7.7 sigma), and the bound at a matched bound -- which is a
+failure of the bound, not a success, as 5.2h said in advance.
+
+The decomposition is an interaction. Without a cut above the pile, refinement
+from two classes to six buys nothing measurable (-0.010 pp); with it, four to
+seven buys +0.038 pp and then saturates. All three cut-bearing partitions rank
+above all three without, regardless of $k$. What the cut does is remove the
+modal temperature from the top class: 37 degrees C holds 26.4% of this
+corpus's sequences and only 10.8% lie above it, so `[37, inf)` was 71% one
+recorded temperature.
+
+That gives a diagnostic which separates our three corpora correctly -- modal
+mass against the mass above it, 0.47x and 0.28x where the bound ranked
+granularity perfectly and 2.46x where it failed. It is fitted to three corpora
+after the fact and we state it as a hypothesis with a named test. We also do
+not claim 38 degrees C is special: both runs share that edge, so the function
+and the temperature are not separated.
+
 ## 5. Recommendations
 
 1. **Report a likelihood-level conditioning gain, not only a downstream
@@ -282,12 +341,18 @@ test that would settle it is specified and unrun.
    smallest class stays trainable -- that was the best of the four on all
    three corpora. Trust the bound for "more classes, up to what you can
    train" and not for the ranking in between, which it got wrong on the
-   unbalanced corpus. And read the edges, not just the row: check your
-   partition separates the temperature range you care about, because on the
-   uncapped corpus the step that paid was the first one to cut above the
-   37 degrees C pile and the bound gave no sign that cut mattered.
-4. **Do not use this statistic to choose the threshold.** Convention, or "well
-   above the mode of your temperature distribution", does better.
+   unbalanced corpus.
+4. **Before counting classes, check that your top class is not mostly one
+   recorded temperature.** Compare the modal temperature's mass to the mass
+   above it; if the mode is larger, cut immediately above it first. On the
+   uncapped corpus that single cut was worth 9.8 sigma, more than the whole
+   measured difference between two classes and nine, and neither the class
+   count nor the bound indicated it. The ratio separates our three corpora
+   correctly but is fitted to them after the fact, so it is a check worth
+   running rather than a validated rule.
+5. **Do not use this statistic to choose the threshold.** Convention, or "well
+   above the mode of your temperature distribution", does better -- and note
+   that section 4.6 is that rule of thumb earning its keep twice over.
 
 ## 6. Limitations
 
@@ -301,9 +366,11 @@ uninformative in either direction. `gain / bound` does not transfer between
 corpora -- 0.24x to 1.58x across the three -- and we draw no efficiency claim
 from it. Where the gain stops paying is corpus-specific, so the class-count
 advice is a procedure rather than a number. Our account of why the ordering
-failed on the uncapped corpus, that one cut above the 37 degrees C pile did
-the work, is post-hoc; the matched-bound test that would settle it is
-specified and unrun. Growth temperature
+failed on the uncapped corpus was post-hoc and is now tested (section 4.6),
+but on one corpus and one backbone, and both of its runs share the same edge,
+so the function of the cut and the specific temperature are not separated. The
+mode/tail diagnostic is fitted to three corpora after the fact and is not
+validated. Growth temperature
 is a property of an organism and not of a protein, so every label here is a
 proxy. Nothing in this paper is an assay, and no claim is made about
 thermostability prediction.

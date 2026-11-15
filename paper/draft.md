@@ -53,14 +53,14 @@ a floor of 5% of residues per class -- below which a control token is too rare
 to train on -- caps what any binning can reach at 67% to 75%. The estimate is
 unigram, so it is a lower bound on what a contextual model extracts and not a
 ceiling on it: ten of our sixteen runs exceed their own, by up to 1.56x.
-We then measure what a model actually extracts, in twenty-nine GPU runs that
+We then measure what a model actually extracts, in thirty-one GPU runs that
 differ only in how the label is defined -- byte-identical sequences, clusters
 and splits, so the comparison isolates label definition from corpus
 composition, which nothing in the related work does. How the label is binned
 is worth a factor of 3.9 to 4.2 in measured conditioning gain, on three
 corpora and two backbones, with margins an order of magnitude above the
 shuffle noise floor; thresholds below 35 degrees C give a small fraction of
-what is available above 40. Three further pre-registered tests, each with the
+what is available above 40. Four further pre-registered tests, each with the
 direction fixed before launch, separate what the scale can and cannot do.
 Across granularity -- two, four, six and nine classes, each partitioned to
 keep classes trainable -- nine classes beat two on all three corpora, at 9.4,
@@ -76,7 +76,19 @@ definitions perfectly while the statistic ranks them no better than chance
 splits), and the two-class edge that maximises the bound measures 6.4 standard
 deviations worse than the conventional one. So the scale is a guide to how many classes
 rather than to where to put them, and on the unbalanced corpus it supports
-only the coarse comparison. The placement failure is predictable from label
+only the coarse comparison. On that corpus we then find what the scale was
+missing, in a fourth pre-registered test: its labels pile up at 37 degrees C,
+every partition below nine classes left that pile sharing a class with the
+whole range above it, and **adding a single edge to separate them is worth
++0.133 pp at 9.8 standard deviations -- more than the entire measured
+difference between two classes and nine.** A four-class partition containing
+that edge beats a six-class partition without it by 6.9 standard deviations at
+a bound matched to 0.0016 percentage points, so class count is refuted with
+class count held fixed and the bound is refuted at a matched bound. Which cuts
+a partition contains can matter more than how many, and no statistic here sees
+it; the condition under which it happens is one ratio from a label table, the
+modal temperature's mass against the mass above it, which separates our three
+corpora correctly. The placement failure is predictable from label
 entropy, which is why we recommend reporting it: mutual information is
 maximised at an even marginal, so the bound inflates wherever a threshold
 splits a corpus evenly, which on a reviewed-protein corpus means wherever it
@@ -143,7 +155,7 @@ measure that we hold everything except the label fixed. Our sweep variants are
 *relabelings*: `temp_bin` is recomputed from the recorded growth temperature in
 memory at startup, so every variant trains on byte-identical sequences,
 clusters and splits, and only the meaning of the control token changes. Across
-twenty-nine runs on three corpora and two backbones we find that **how the label
+thirty-one runs on three corpora and two backbones we find that **how the label
 is defined is worth a factor of 3.9 to 4.2 in measured conditioning gain**,
 from +0.070% at cold thresholds to +0.273% on a plateau between 45 and 65
 degrees C on the primary corpus, and by comparable factors on the other two,
@@ -178,7 +190,7 @@ goes.
    every other corpus property. Nothing in the related work does this; its
    comparisons confound label definition with corpus composition.
 2. The measurement that label definition is worth 3.9x to 4.2x in conditioning
-   gain, over twenty-nine runs on three corpora and two backbones, each verified
+   gain, over thirty-one runs on three corpora and two backbones, each verified
    against a shuffled-token control and a cluster-disjoint test split.
 3. An envelope over all binnings of a temperature database's labels, with the
    finding that the conventional two-class threshold reaches 23-30% of it, and
@@ -516,14 +528,24 @@ and the uncapped one pays only at nine. Nor does a stable efficiency figure:
 `gain / bound` runs 0.51x-0.66x on one corpus, 1.13x-1.58x on another and
 0.24x-0.57x on the third, so it must not be quoted as a general ratio.
 
-A third caution has been earned since this table was written. **A reachability
-table counts classes and cannot see which cuts they make.** On the uncapped
-corpus every partition below nine classes left all 18,922 sequences above 38
-degrees C in one class with the Swiss-Prot 37 degrees C pile, and the step
-that paid was the first one to separate them. The table ranked the earlier
-refinements higher while they only subdivided the mesophiles. So read the
-edges, not just the row: check that your partition separates the temperature
-range your application cares about, because this statistic will not.
+A third caution has been earned since this table was written, and section
+5.2h measured it rather than inferring it. **A reachability table counts
+classes and cannot see which cuts they make, and on a skewed corpus the cuts
+matter more.** On the uncapped corpus every partition below nine classes left
+all 18,922 sequences above 38 degrees C in one class with the Swiss-Prot 37
+degrees C pile. Adding a single edge there is worth +0.133 pp at 9.8 sigma,
+more than the entire measured difference between two classes and nine, and a
+four-class partition containing it beats a six-class one at a matched bound by
+6.9 sigma. The table ranked the earlier refinements higher while they only
+subdivided the mesophiles.
+
+So **run one check before you trust this table at all: compare the modal
+temperature's mass to the mass above it.** If the mode is the larger, cut
+immediately above it and count classes afterwards. That ratio is 0.47x on the
+primary corpus and 0.28x on the design-matched one, where the bound ranked
+granularity perfectly, and 2.46x on the uncapped one, where it did not
+(section 5.2h). The diagnostic is fitted to three corpora after the fact and
+is offered as a check to run, not as a validated rule.
 
 **Equal-mass binning is not available on these corpora, and the quantile rows
 of the sweep are not nested.** A single recorded temperature can hold more
@@ -1357,6 +1379,103 @@ reason given in 5.2f and 5.2g: both outcomes are differences between runs, not
 ratios to a bound. Three of 5.2g's four runs failed on size and the comparison
 figures used here are among them.
 
+#### Outcome: it was one cut, and the bound cannot see it
+
+Both pre-registered outcomes are met on both splits, and section 5.2g's
+post-hoc account survives the test built to kill it.
+
+| run | k | edges (C) | bound | val gain | test gain | gain/bound |
+|---|---|---|---|---|---|---|
+| `gplc_nest` | 7 | 27,29,31,35,37,**38** | +0.3154% | +0.144% | **+0.195%** | 0.62x |
+| `gplc_match` | 4 | 30,37,**38** | +0.2550% | +0.124% | **+0.157%** | 0.62x |
+
+**Primary: adding one edge at 38 degrees C to `gext_k6`'s partition is worth
++0.133 pp on test, at 9.8 sigma** (+0.044 pp, 3.1 sigma on validation). The
+prediction on record was positive beyond two standard deviations and
+recovering more than half of the +0.129 pp that k=6 to k=9 bought. The
+measured difference is **103% of that jump**: a single edge does all of the
+work that three additional classes appeared to do.
+
+**Secondary, the discriminating one: `gplc_match` beats `gext_k6` by +0.095 pp
+at 6.9 sigma, at a bound matched to 0.0016 pp** (+0.024 pp, 2.3 sigma on
+validation). Four well-placed classes beat six badly placed ones on the same
+bound. Validation agrees in sign throughout and is compressed relative to
+test, as across the whole 5.2g batch, which is why 5.2h fixed test in advance.
+
+Both runs are significant on both splits (test z 21.4 and 16.8) and **both
+passed Gate 2 on test**, at 0.62x of their ceilings -- the two highest ratios
+this corpus has produced. Both returned exit code 3 from the validation gate
+failing on size, which 5.2h stated in advance does not void an outcome defined
+as a difference between runs.
+
+**Of the three explanations section 5.2h tabulated, one survives and two are
+refuted.**
+
+| explanation | predicted `gplc_match` | measured | verdict |
+|---|---|---|---|
+| the cut above the 37 degrees C pile | near +0.19% | **+0.157%** | **survives** |
+| class count | near `gext_k4`'s +0.07% | +0.157% | refuted |
+| the bound | near `gext_k6`'s +0.06% | +0.157% | refuted |
+
+Class count is refuted with class count held *exactly* fixed: `gplc_match` and
+`gext_k4` are both four-class partitions differing only in where the edges
+sit, and the difference is +0.087 pp at 7.7 sigma. The bound is refuted at a
+matched bound -- **which is a failure of the bound and not a success**, as
+5.2h committed in advance to saying.
+
+**The decomposition is cleaner than the hypothesis predicted, and it is an
+interaction rather than a single cause.** Without a cut above the pile,
+refinement buys nothing at all: k=2 to k=4 is -0.002 pp, k=4 to k=6 is -0.008
+pp, k=2 to k=6 is -0.010 pp, every one of them a point estimate pointing the
+wrong way. With the cut present, refinement buys a little and then saturates:
+k=4 to k=7 is +0.038 pp at 2.9 sigma and k=7 to k=9 is -0.004 pp at 0.3 sigma.
+So **the cut is worth +0.09 to +0.13 pp, class count is worth +0.038 pp, and
+class count only pays once the cut is there.** `gplc_nest` at seven classes is
+indistinguishable from `gext_k9` at nine. Ranked by measured gain, the six
+runs on this corpus separate completely by whether they contain the cut, with
+all three cut-bearing partitions above all three without, regardless of k.
+
+**What the cut does is remove the modal temperature from the top class.** On
+this corpus 37 degrees C holds 26.4% of sequences and only 10.8% lie above it,
+so `[37, inf)` is 71% one recorded temperature: 53,941 modal sequences against
+21,941 above them, a ratio of 2.46x. A class that is mostly one temperature
+cannot carry information about the range above it. The edge at 38 takes the
+mode out of that class, and that is the whole of its effect.
+
+**This yields a diagnostic that retro-predicts all three corpora**, and it is
+arithmetic from a label table rather than a new measurement.
+
+| corpus | modal mass | mass above mode | mode/tail | granularity rho |
+|---|---|---|---|---|
+| `pretrain` | 28.9% (30 C) | 60.8% | 0.47x | **+1.000** |
+| `external_balanced` | 14.7% (37 C) | 52.6% | 0.28x | **+1.000** |
+| `external` | 26.4% (37 C) | 10.8% | **2.46x** | **+0.200** |
+
+Where the tail outweighs the mode, no partition's top class contained the mode
+at all, there was nothing for a cut to fix, and the bound ranked granularity
+perfectly. Where the mode outweighs the tail, the ranking failed. Three for
+three. It also explains why one numeric edge behaves differently in different
+places: 37 degrees C is nowhere near `pretrain`'s mode of 30, so `[37, inf)`
+is pure tail there, while here 37 *is* the mode.
+
+**It is a hypothesis fitted to three corpora after the fact and we state it as
+one.** Three points and a ratio is pattern-matching. The test we would run is
+a corpus chosen in advance for being mode-dominated, predicting that its
+granularity ranking fails unless the partition cuts immediately above the
+mode; cheaper and available now, re-running the `pretrain` or
+`external_balanced` series with a deliberately mode-contaminated top class,
+predicting that their perfect rank correlations break.
+
+**What this does not license**, per 5.2h's advance commitments. Not that 38
+degrees C is special: both runs use that edge, so we cannot separate it from
+any cut isolating the upper tail, and we name the function rather than the
+temperature. Not any rescue of the bound: the three cut-bearing runs reach
+0.57x to 0.62x of their ceilings and the three without reach 0.24x to 0.49x,
+so the bound does not order these six correctly either. And one corpus, one
+backbone for the mechanism itself.
+
+Full analysis: `results/placement_20261114/measured.md`.
+
 ### 5.3 Sampling design is half the measurement
 
 The uncapped, unbalanced external corpus peaks at 35 degrees C instead, and
@@ -1448,7 +1567,7 @@ they did not support it: the design-matched corpus gives 0.88x to 1.84x and the
 uncapped one 0.31x to 1.29x, the latter spanning a factor of 4.2 across four
 thresholds. The within-cluster form does not estimate either.
 
-### 6.2 It ranks resolution, not placement
+### 6.2 It ranks resolution, not placement -- and on a skewed corpus placement is what matters
 
 This section previously claimed the measure does not rank across granularities,
 on the evidence of a single run. Section 5.2e refutes that with a
@@ -1479,21 +1598,34 @@ bound rises 1.7x across them. So the bound separated the extremes and carried
 no information about the middle, which is a weaker failure than mis-ranking
 well-separated points but is also the end of the perfect-match claim.
 
-**Why this probably happened, and it reopens the dichotomy this section is
-named for.** On the uncapped corpus, k = 2, 4 and 6 all put every sequence
-above 38 degrees C in the same class as the Swiss-Prot 37 degrees C pile; k=9
-is the first to cut at 38 and separate them. The refinement that paid was one
-particular cut, not refinement in general. That means **which cuts a partition
-contains can dominate how many it contains**, even inside a granularity series
-built to hold balance fixed -- so placement re-enters through the back door,
-and "resolution yes, placement no" is a description of two corpora whose
-sampling design happened to spread refinement across the temperature range
-rather than a property of the statistic. Section 5.2g records a matched-bound
-test of this that we have not run: the partition `{30, 37, 38}` carries k=6's
-bound to within 0.0016 pp with four classes instead of six, and the account
-above predicts it measures three times k=6's gain. Until that is run the
-mechanism is a reading of class tables, and this paragraph is the least secure
-one in the section.
+**Why it happened, and it inverts the dichotomy this section is named for.**
+This was a post-hoc reading in 5.2g and section 5.2h tested it with two
+pre-registered runs. On the uncapped corpus, k = 2, 4 and 6 all put every
+sequence above 38 degrees C in the same class as the Swiss-Prot 37 degrees C
+pile; k=9 is the first to cut at 38 and separate them. **Adding that one edge
+to the six-class partition is worth +0.133 pp at 9.8 sigma -- 103% of what
+three extra classes appeared to buy -- and a four-class partition containing
+it beats the six-class partition by +0.095 pp at 6.9 sigma on a bound matched
+to 0.0016 pp** (5.2h). Class count is refuted with class count held exactly
+fixed, at 7.7 sigma, and the bound is refuted at a matched bound.
+
+So on this corpus **which cuts a partition contains dominates how many it
+contains, and the bound sees neither.** The decomposition is an interaction:
+without a cut above the pile, refinement from two classes to six buys nothing
+measurable; with it, four classes to seven buys +0.038 pp and then saturates.
+Ranked by measured gain, all three cut-bearing partitions sit above all three
+without, regardless of k.
+
+That makes "resolution yes, placement no" a description of the two corpora we
+balanced rather than a property of the statistic. The condition that separates
+them is computable from a label table in seconds: compare the modal
+temperature's mass to the mass above it. On `pretrain` and `external_balanced`
+the tail outweighs the mode (0.47x and 0.28x) and no partition's top class
+contained the mode at all, so there was nothing for a cut to fix and the bound
+ranked granularity perfectly; on `external` the mode outweighs the tail
+(2.46x) and the ranking failed. Three for three -- but fitted to three corpora
+after the fact, so section 5.2h states it as a hypothesis with a named test
+rather than as a result.
 
 What the bound does *not* tell you, on any corpus, is how far to go. The
 primary corpus saturates by four classes, the design-matched one has not
@@ -1528,11 +1660,13 @@ The practical form of this is a restriction, not a repair: **use the bound to
 choose how many classes, not where to put them** -- and expect it to tell you
 that more is better rather than to order the options reliably. Convention, or
 any rule of thumb that knows thermophiles start somewhere near 45-55 degrees
-C, chooses placement better than this statistic does. Section 5.2g adds the
-corollary that a granularity series is only as good as the cuts it happens to
-contain: on a corpus whose labels pile up at one temperature, check that your
-partitions actually separate the tail you care about, because the bound will
-not check it for you.
+C, chooses placement better than this statistic does. Sections 5.2g and 5.2h
+add the corollary, and on a skewed corpus it is the more important half: **a
+partition's top class must not be mostly one recorded temperature.** Check the
+mode against the tail above it before counting classes at all, because a class
+that is 71% a single temperature carries no information about the range beyond
+it, the bound will not tell you so, and on this corpus fixing it was worth
+more than tripling the class count.
 
 The entropy normalization we tried as a repair remains a dead end and we
 report it rather than omit it. Spearman against measured gain went from +0.600
@@ -1641,7 +1775,7 @@ it can fail on a single tight family.
 is the finding we would most like a reader to act on, and it does not depend on
 the corpus statistic working -- which, on the evidence below, it does for
 choosing how many classes and not for choosing where to cut them. Across
-twenty-nine runs, the choice of threshold moves measured
+thirty-one runs, the choice of threshold moves measured
 conditioning gain by a factor of 3.9 on the primary corpus, 3.8 on the
 design-matched one and 4.2 on the uncapped one, with the cold end of the range
 losing most of the available signal in all three. Every system in section 2
@@ -1716,10 +1850,21 @@ confidently than the measurements support: it ranks all four perfectly on the
 two corpora we balanced and not on the uncapped one, where k=4 and k=6 scored
 above k=2 and measured level with it (section 5.2g). Trust it for "more
 classes, up to what you can train" and not for the ranking of the options in
-between. And check that your partitions actually separate the temperature
-range you care about: on the uncapped corpus the step that paid was the first
-one to cut above the 37 degrees C pile, and the bound gave no sign that that
-cut was the important one.
+between.
+
+**And before counting classes at all, check that your partition's top class is
+not mostly one recorded temperature.** On the uncapped corpus the step that
+paid was the first one to cut above the 37 degrees C pile, and section 5.2h
+measured what that cut was worth on its own: +0.133 pp at 9.8 sigma, more than
+the whole measured difference between two classes and nine, with a four-class
+partition containing it beating a six-class one at a matched bound. The bound
+gave no sign that that cut was the important one, and neither did the class
+count. The cheap check is one ratio from the label table -- the modal
+temperature's mass against the mass above it -- which is 0.47x and 0.28x on
+the two corpora where the bound ranked granularity perfectly and 2.46x on the
+one where it failed. If the mode is the larger, cut immediately above it
+first. That diagnostic is fitted to three corpora after the fact, so we offer
+it as a check worth running rather than a rule we have validated.
 
 **Do not use this statistic to choose the threshold -- only to choose the
 number of classes.** We set out to supply a denominator and we would have
@@ -1850,7 +1995,7 @@ no independent replication was found; cite them as reported.
 
 ## What is missing before submission
 
-Status 2026-11-10, after twenty-nine runs. Every experiment in the plan has
+Status 2026-11-14, after thirty-one runs. Every experiment in the plan has
 been run, plus two granularity series that were not in it: section 5.2e, which
 refuted its own pre-registered prediction and became the paper's one positive
 result, and section 5.2f, which replicated it on a second corpus and cost us
@@ -1881,10 +2026,10 @@ remains:
 - **Nothing in the results is pending.** Figures regenerate from committed
   files via `scripts/17_figures.py`.
 
-Spend: roughly $90 of A10 time against the $31 originally estimated, over
-twenty-nine runs. The overrun is the four pre-registered tests that were not
-in the original plan: 5.2d, 5.2e, 5.2f replicating the second, and 5.2g
-putting it on the corpus we did not build.
+Spend: roughly $97 of A10 time against the $31 originally estimated, over
+thirty-one runs. The overrun is the five pre-registered tests that were not in
+the original plan: 5.2d, 5.2e, 5.2f replicating the second, 5.2g putting it on
+the corpus we did not build, and 5.2h explaining why it failed there.
 
 **Landed 2026-11-10:** the granularity series on the uncapped third corpus,
 section 5.2g. The primary outcome replicated at 9.4 sigma and the rank
@@ -1892,17 +2037,26 @@ correlation failed at +0.200, which was the narrower of the two refutations
 pre-registered for it. Section 6.2 is qualified accordingly and no section had
 to be withdrawn.
 
-**Launched 2026-11-14 and pending:** the matched-bound placement test,
-pre-registered in section 5.2h. Two runs rather than the one originally
-costed, roughly $7, because a single run cannot separate the 38 degrees C
-account from a plain class-count account -- `gplc_nest` adds one edge at 38 to
-`gext_k6`'s partition and changes nothing else, and `gplc_match` carries
-`gext_k6`'s bound with four classes instead of six. Section 5.2h carries the
-predictions, the three competing explanations and what each outcome would
-cost. A positive result turns the paper's weakest paragraph into a measured
-mechanism and gives section 6.2 its first positive placement result; a null
-removes that paragraph and leaves 5.2g's failure unexplained, which 5.2g
-already survives.
+**Landed 2026-11-14:** the matched-bound placement test, section 5.2h. Both
+pre-registered outcomes met on both splits, at 9.8 and 6.9 sigma on test. The
+paper's weakest paragraph is now a measured mechanism and section 6.2 has its
+first positive placement result.
+
+Still available and not run, in the order we would run them:
+
+1. **The mode/tail diagnostic, tested rather than fitted.** Re-run two or
+   three points of the `pretrain` granularity series with a deliberately
+   mode-contaminated top class, predicting that its perfect rank correlation
+   breaks. Roughly $7-10, and it converts the diagnostic from a pattern across
+   three corpora into a pre-registered result. This is the best value left.
+2. **Whether 38 degrees C is doing anything beyond isolating the tail.** Both
+   5.2h runs share that edge, so the function and the temperature are not
+   separated. One run at a different tail-isolating edge, say 40 or 42, would
+   do it, roughly $3.50.
+3. **A corpus with growth-temperature measurement independent of the
+   culture-collection catalogues**, and **a second architecture family** to
+   turn 5.2c into an architecture-independence result. Both are new data
+   collection, not GPU time.
 
 Future work, flagged and not claimed: a corpus with a growth-temperature
 measurement independent of the culture-collection catalogues that Gosha and
