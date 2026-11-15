@@ -1253,6 +1253,110 @@ not be quoted as an efficiency.
 
 Full analysis: `results/granularity_20261110/measured.md`.
 
+### 5.2h Was it one cut? The matched-bound placement test. Pre-registered 2026-11-14
+
+**Written before these two runs were launched.** Call ids in
+`results/placement_20261114/runs.txt`; the commit carrying this section
+immediately precedes the launch commit.
+
+Section 5.2g's rank correlation failed and we offered an explanation for it:
+that k=9 paid because it was the first partition to cut at 38 degrees C and
+separate the 18,922 sequences above 38 from the Swiss-Prot 37 degrees C pile,
+rather than because it was more refined. That explanation was found by
+inspecting class tables after the fact, it is the least secure paragraph in
+section 6.2, and it is load-bearing -- it is what turns 5.2g from "the bound
+sometimes mis-ranks" into a statement about *which* cuts matter. So it gets a
+test rather than a paragraph.
+
+**Two runs, because one cannot separate the candidate explanations.**
+
+| run | edges (C) | k | bound | smallest class |
+|---|---|---|---|---|
+| `gplc_nest` | 27,29,31,35,37,**38** | 7 | +0.3154% | 9.9% / 18,012 seqs |
+| `gplc_match` | 30,37,**38** | 4 | +0.2550% | 9.9% / 19,702 seqs |
+
+`gplc_nest` is `gext_k6`'s partition with one edge added at 38 and nothing
+else changed -- a strict refinement of it, so exactly one variable moves.
+`gplc_match` carries `gext_k6`'s bound to within 0.0016 pp using four classes
+instead of six, and is the matched-bound test proper.
+
+**Three explanations are on the table for 5.2g's k=6-to-k=9 jump, and they
+make different predictions here.** This is the reason for the second run: the
+two low-k explanations are indistinguishable on `gplc_nest` alone.
+
+| explanation | predicts `gplc_nest` (k=7) | predicts `gplc_match` (k=4) |
+|---|---|---|
+| **the 38 C cut** | jumps to near +0.19% | near +0.19%, on four classes |
+| **class count** | between +0.06% and +0.19% | near `gext_k4`'s +0.07% |
+| **the bound** | near +0.19% (bound 0.315 vs k9's 0.338) | near `gext_k6`'s +0.06% (bound matched) |
+
+So `gplc_match` is the discriminating run and `gplc_nest` is the
+single-variable confirmation. Note that the class-count and bound
+explanations predict almost the same figure for `gplc_match`, +0.07% against
++0.06%, which this design cannot separate and does not try to.
+
+**Design.** Two runs on `external`, differing from the 5.2g batch only in
+`--bin-edges`; byte-identical sequences, clusters and splits as all four of
+those; primary backbone; stage A; 3,000 steps; A10G; Gate 2 on 2,000
+validation sequences; five shuffles. Reference figures are `gext_k6`'s
++0.062% and `gext_k9`'s +0.191% on test, from the same splits and the same cap.
+
+**Primary outcome, fixed now: the sign of (`gplc_nest` test gain) -
+(`gext_k6` test gain).** Adding one edge at 38 to k=6's partition.
+
+*The prediction on record is that this difference is positive beyond two
+standard deviations, and that it recovers more than half of the +0.129 pp that
+k=6 to k=9 bought* -- so at least +0.065 pp, taking `gplc_nest` above +0.127%.
+
+**Secondary, and it is the one that discriminates: the sign of (`gplc_match`
+test gain) - (`gext_k6` test gain)**, at bounds matched to 0.0016 pp. *The
+prediction on record is positive beyond two standard deviations.* If the 38
+degrees C account is right, four well-placed classes beat six badly placed
+ones at the same bound, which would be the paper's first positive placement
+result and the sharpest single statement in it.
+
+**What would refute it.** Either difference coming back negative, or within
+two standard deviations of zero. Specifically:
+
+- **`gplc_nest` within noise of `gext_k6`.** This kills the account outright.
+  The 38 degrees C cut would then not be what k=9 bought, 6.2's mechanism
+  paragraph comes out, and 5.2g's failure reverts to unexplained -- which is a
+  worse paper but an honest one, and 5.2g already stands without it.
+- **`gplc_nest` positive but `gplc_match` within noise of `gext_k6`.** This
+  points at class count rather than placement: refinement helps, and the 38
+  edge helps only as one refinement among others. Section 6.2's "placement
+  re-enters inside a granularity series" would have to be withdrawn, and the
+  resolution-not-placement dichotomy would be restored intact.
+- **`gplc_match` near `gext_k4`'s +0.070%.** The class-count reading, same
+  consequence as above.
+
+We are not reserving the right to call a null here a property of this corpus.
+The whole point of the account under test is that it is a claim about this
+corpus's temperature distribution, so a null is a null.
+
+**What a positive result does and does not license.** It would establish that
+on this corpus one particular cut carries most of what refinement appeared to
+buy, and that a cheap statistic ranking partitions by count or by bound misses
+it. It would **not** establish that 38 degrees C is special, or that the
+mechanism is "separating thermophiles": with two runs sharing one edge we
+cannot distinguish the 38 edge from any cut that isolates the top of the
+distribution, and we will say so rather than name a temperature. It would also
+not rescue the bound -- `gplc_match` beating `gext_k6` at a matched bound is a
+*failure* of the bound, not a success.
+
+**Void conditions**, and the letter of them is what counts.
+
+(i) Either run failing Gate 2's **significance** criterion, z < 3 against the
+shuffle spread.
+
+(ii) Either run whose rarest class holds under 5% of the corpus's residues.
+Both sit at 9.9% by construction and the table above records it.
+
+**A Gate 2 failure on the size criterion does not void this test**, for the
+reason given in 5.2f and 5.2g: both outcomes are differences between runs, not
+ratios to a bound. Three of 5.2g's four runs failed on size and the comparison
+figures used here are among them.
+
 ### 5.3 Sampling design is half the measurement
 
 The uncapped, unbalanced external corpus peaks at 35 degrees C instead, and
@@ -1788,16 +1892,17 @@ correlation failed at +0.200, which was the narrower of the two refutations
 pre-registered for it. Section 6.2 is qualified accordingly and no section had
 to be withdrawn.
 
-Still available and not run, and it is the one experiment that would now
-change something: **the matched-bound placement test** named in 5.2g. The
-partition `{30, 37, 38}` carries `gext_k6`'s bound to within 0.0016 pp using
-four classes instead of six, and the post-hoc account of 5.2g's failure --
-that what paid was the first cut above the 37 degrees C pile, not refinement
-as such -- predicts it measures near +0.191% where k=6 measured +0.062%. One
-run, roughly $3.50. A positive result turns the paper's weakest paragraph into
-a measured mechanism and gives section 6.2 a second placement result on a
-third corpus; a null kills a story we would otherwise be tempted to tell. It
-is the best value left on the table by a wide margin.
+**Launched 2026-11-14 and pending:** the matched-bound placement test,
+pre-registered in section 5.2h. Two runs rather than the one originally
+costed, roughly $7, because a single run cannot separate the 38 degrees C
+account from a plain class-count account -- `gplc_nest` adds one edge at 38 to
+`gext_k6`'s partition and changes nothing else, and `gplc_match` carries
+`gext_k6`'s bound with four classes instead of six. Section 5.2h carries the
+predictions, the three competing explanations and what each outcome would
+cost. A positive result turns the paper's weakest paragraph into a measured
+mechanism and gives section 6.2 its first positive placement result; a null
+removes that paragraph and leaves 5.2g's failure unexplained, which 5.2g
+already survives.
 
 Future work, flagged and not claimed: a corpus with a growth-temperature
 measurement independent of the culture-collection catalogues that Gosha and
