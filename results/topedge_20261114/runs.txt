@@ -56,4 +56,34 @@ outcomes are differences between runs.
 Reports land at checkpoints/stage_a/<run>/{gate2,test}_report.txt on volume
 thermocas-gen-vol.
 
-PENDING. Nothing is written below this line until both land.
+LANDED 2026-11-15. Both predictions met on test; neither clears 2 sigma on
+validation. Full write-up in measured.md.
+
+                 val gain  val z  test gain  test z  gain/bound(test)  Gate 2
+  gmod_e38       +0.122%   11.5   +0.162%    27.3    0.57x             val FAIL / test PASS
+  gmod_e45       +0.120%   11.1   +0.165%    13.0    0.58x             val FAIL / test PASS
+  gext_k6 (ref)  +0.100%   11.6   +0.062%     6.2    0.24x             both FAIL
+
+  primary    gmod_e38 - gext_k6, test: +0.100 pp at 8.6 sigma, above the
+             +0.09 pp named in advance. MET. On validation +0.022 pp at
+             1.6 sigma -- within noise, and reported as such.
+  secondary  gmod_e45 - gmod_e38, test: +0.003 pp at 0.2 sigma, with both
+             exceeding gext_k6 by +0.100 and +0.103 pp. MET on both terms.
+             Licenses only the negative claim that the value 38 does not
+             matter; not equivalence.
+
+None of the three pre-registered refutations occurred. 5.2h is not overturned:
+with k held at six, moving one edge recovers 75% of its k6 -> k7 jump.
+
+Both calls exited 3. That is the Gate 2 SIZE failure on validation, which this
+test's void conditions explicitly exclude; all four reports were written. Both
+runs selected epoch=0-step=2500.ckpt, the step gext_k6 also selected, so the
+comparison is at a common budget. Wall clocks 7,849s and 7,786s against
+gext_k6's 7,722s.
+
+CORRECTION recorded here and in measured.md: the mode/tail diagnostic and the
+top-class modal fraction were previously computed on sequence counts. On
+residues -- the basis of the 5% floor, the minimum class share and the bound --
+they are 0.50x / 0.31x / 2.74x for pretrain / external_balanced / external,
+and [37,inf) is 73.3% modal rather than 71.1%. Same ordering, same side of
+1.0, no conclusion affected.

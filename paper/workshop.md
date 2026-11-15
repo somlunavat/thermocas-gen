@@ -308,20 +308,30 @@ count held exactly fixed (`gplc_match` against the four-class `gext_k4`,
 +0.087 pp at 7.7 sigma), and the bound at a matched bound -- which is a
 failure of the bound, not a success, as 5.2h said in advance.
 
-The decomposition is an interaction. Without a cut above the pile, refinement
-from two classes to six buys nothing measurable (-0.010 pp); with it, four to
-seven buys +0.038 pp and then saturates. All three cut-bearing partitions rank
-above all three without, regardless of $k$. What the cut does is remove the
-modal temperature from the top class: 37 degrees C holds 26.4% of this
-corpus's sequences and only 10.8% lie above it, so `[37, inf)` was 71% one
-recorded temperature.
+What the cut does is remove the modal temperature from the top class: 37
+degrees C holds 27.2% of this corpus's residues and only 9.9% lie above it, so
+`[37, inf)` was 73% one recorded temperature. A third pair of runs separates
+that function from the edge value [draft 5.2i]: holding $k{=}6$ and *moving*
+`gext_k6`'s top edge rather than adding one, 38 degrees C is worth +0.100 pp
+at 8.6 sigma and 45 degrees C +0.103 pp, the two agreeing to 0.2 sigma. Both
+predictions met on test; neither clears 2 sigma on validation, and this corpus
+has now disagreed between its splits twice while neither balanced corpus has
+once. We quote test -- it is held out and validation selected the checkpoint --
+and record that agreement within noise licenses only the negative claim that
+the value 38 does not matter.
+
+Ranked by measured test gain, the eight partitions of this corpus fall into
+two groups separated by 0.085 pp with nothing between them: every top class
+free of the modal temperature measures +0.157% or above, every one dominated
+by it +0.072% or below, and $k$ runs from 2 to 9 inside each group without
+ordering it.
 
 That gives a diagnostic which separates our three corpora correctly -- modal
-mass against the mass above it, 0.47x and 0.28x where the bound ranked
-granularity perfectly and 2.46x where it failed. It is fitted to three corpora
-after the fact and we state it as a hypothesis with a named test. We also do
-not claim 38 degrees C is special: both runs share that edge, so the function
-and the temperature are not separated.
+mass against the mass above it, 0.50x and 0.31x where the bound ranked
+granularity perfectly and 2.74x where it failed. It is fitted after the fact,
+and under our own 5% floor the condition is realizable on only one of the
+three corpora, so it cannot be falsified by transfer here. We state it as a
+hypothesis needing a fourth corpus.
 
 ## 5. Recommendations
 
@@ -344,12 +354,13 @@ and the temperature are not separated.
    unbalanced corpus.
 4. **Before counting classes, check that your top class is not mostly one
    recorded temperature.** Compare the modal temperature's mass to the mass
-   above it; if the mode is larger, cut immediately above it first. On the
-   uncapped corpus that single cut was worth 9.8 sigma, more than the whole
-   measured difference between two classes and nine, and neither the class
-   count nor the bound indicated it. The ratio separates our three corpora
-   correctly but is fitted to them after the fact, so it is a check worth
-   running rather than a validated rule.
+   above it; if the mode is larger, cut above it first -- anywhere above it,
+   since 38 and 45 degrees C agree to 0.2 sigma. On the uncapped corpus that
+   single cut was worth 9.8 sigma, more than the whole measured difference
+   between two classes and nine, and neither the class count nor the bound
+   indicated it. The ratio separates our three corpora correctly but is fitted
+   to them after the fact and expressible on only one of them, so it is a
+   check worth running rather than a validated rule.
 5. **Do not use this statistic to choose the threshold.** Convention, or "well
    above the mode of your temperature distribution", does better -- and note
    that section 4.6 is that rule of thumb earning its keep twice over.
@@ -367,10 +378,13 @@ corpora -- 0.24x to 1.58x across the three -- and we draw no efficiency claim
 from it. Where the gain stops paying is corpus-specific, so the class-count
 advice is a procedure rather than a number. Our account of why the ordering
 failed on the uncapped corpus was post-hoc and is now tested (section 4.6),
-but on one corpus and one backbone, and both of its runs share the same edge,
-so the function of the cut and the specific temperature are not separated. The
-mode/tail diagnostic is fitted to three corpora after the fact and is not
-validated. Growth temperature
+but on one corpus and one backbone. On that corpus the two splits disagree,
+twice -- 4.5's rank correlation and 4.6's primary difference are both strong on
+test and within noise on validation -- while neither balanced corpus has
+disagreed once; we quote test and do not know the cause. The mode/tail
+diagnostic is fitted to three corpora after the fact, is not validated, and
+under our own 5% floor is expressible on only one of the three, so it cannot
+be falsified by transfer within this paper. Growth temperature
 is a property of an organism and not of a protein, so every label here is a
 proxy. Nothing in this paper is an assay, and no claim is made about
 thermostability prediction.

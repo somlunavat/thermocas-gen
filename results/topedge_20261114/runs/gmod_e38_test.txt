@@ -1,0 +1,20 @@
+checkpoint: /__modal/volumes/vo-TLzhuxHSjQsyZwUOiWhbG7/checkpoints/stage_a/gmod_e38/epoch=0-step=2500.ckpt
+test sequences scored: 2000 of 11263 in the split
+cluster-disjoint from train: yes
+
+perplexity with the correct growth-temperature token: 3.7369
+perplexity with shuffled tokens: 3.7430 (mean of 5)
+  individual shuffles: 3.7431, 3.7433, 3.7428, 3.7430, 3.7427
+relative gain: +0.162%
+
+is the effect real?
+  beats every shuffle   True
+  z vs shuffle spread   27.3  (required 3.0; spread 0.000223)
+  -> SIGNIFICANT
+
+is the effect large, given what the corpus allows?
+  corpus ceiling        +0.284% (scripts/13_conditioning_ceiling.py)
+  gain / ceiling        0.57x  (required 0.50x)
+  -> LARGE ENOUGH
+
+GATE 2 PASSED

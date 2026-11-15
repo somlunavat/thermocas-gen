@@ -53,14 +53,14 @@ a floor of 5% of residues per class -- below which a control token is too rare
 to train on -- caps what any binning can reach at 67% to 75%. The estimate is
 unigram, so it is a lower bound on what a contextual model extracts and not a
 ceiling on it: ten of our sixteen runs exceed their own, by up to 1.56x.
-We then measure what a model actually extracts, in thirty-one GPU runs that
+We then measure what a model actually extracts, in thirty-three GPU runs that
 differ only in how the label is defined -- byte-identical sequences, clusters
 and splits, so the comparison isolates label definition from corpus
 composition, which nothing in the related work does. How the label is binned
 is worth a factor of 3.9 to 4.2 in measured conditioning gain, on three
 corpora and two backbones, with margins an order of magnitude above the
 shuffle noise floor; thresholds below 35 degrees C give a small fraction of
-what is available above 40. Four further pre-registered tests, each with the
+what is available above 40. Five further pre-registered tests, each with the
 direction fixed before launch, separate what the scale can and cannot do.
 Across granularity -- two, four, six and nine classes, each partitioned to
 keep classes trainable -- nine classes beat two on all three corpora, at 9.4,
@@ -86,9 +86,17 @@ that edge beats a six-class partition without it by 6.9 standard deviations at
 a bound matched to 0.0016 percentage points, so class count is refuted with
 class count held fixed and the bound is refuted at a matched bound. Which cuts
 a partition contains can matter more than how many, and no statistic here sees
-it; the condition under which it happens is one ratio from a label table, the
-modal temperature's mass against the mass above it, which separates our three
-corpora correctly. The placement failure is predictable from label
+it. A fifth test isolates the mechanism: holding class count at six and moving
+that one edge from 37 to 38 degrees C is worth +0.100 pp at 8.6 standard
+deviations, and moving it to 45 instead gives +0.103 pp, the two agreeing to
+0.2 standard deviations -- so what the cut does, not where exactly it sits, is
+what pays. Ranked by measured gain, the eight partitions of that corpus fall
+into two groups separated by 0.085 pp with nothing between them, and class
+count ranges from two to nine inside each without ordering it. The condition
+under which this happens is one ratio from a label table, the modal
+temperature's mass against the mass above it, which separates our three
+corpora correctly -- though only one of the three can express it, so the ratio
+remains a hypothesis awaiting a fourth corpus rather than a result. The placement failure is predictable from label
 entropy, which is why we recommend reporting it: mutual information is
 maximised at an even marginal, so the bound inflates wherever a threshold
 splits a corpus evenly, which on a reviewed-protein corpus means wherever it
@@ -541,11 +549,15 @@ subdivided the mesophiles.
 
 So **run one check before you trust this table at all: compare the modal
 temperature's mass to the mass above it.** If the mode is the larger, cut
-immediately above it and count classes afterwards. That ratio is 0.47x on the
-primary corpus and 0.28x on the design-matched one, where the bound ranked
-granularity perfectly, and 2.46x on the uncapped one, where it did not
-(section 5.2h). The diagnostic is fitted to three corpora after the fact and
-is offered as a check to run, not as a validated rule.
+immediately above it and count classes afterwards. That ratio is 0.50x on the
+primary corpus and 0.31x on the design-matched one, where the bound ranked
+granularity perfectly, and 2.74x on the uncapped one, where it did not
+(section 5.2h; residue basis, as everywhere else in this paper). Section 5.2i
+found no evidence that the exact cut point matters once it is above the mode --
+38 and 45 degrees C agree to 0.2 sigma with class count held at six -- so
+"immediately above" can be read as "above". The diagnostic is fitted to three
+corpora after the fact, and 5.2i shows the condition is realizable on only one
+of the three, so it is offered as a check to run, not as a validated rule.
 
 **Equal-mass binning is not available on these corpora, and the quantile rows
 of the sweep are not nested.** A single recorded temperature can hold more
@@ -1438,7 +1450,7 @@ all three cut-bearing partitions above all three without, regardless of k.
 **What the cut does is remove the modal temperature from the top class.** On
 this corpus 37 degrees C holds 26.4% of sequences and only 10.8% lie above it,
 so `[37, inf)` is 71% one recorded temperature: 53,941 modal sequences against
-21,941 above them, a ratio of 2.46x. A class that is mostly one temperature
+21,941 above them, a ratio of 2.74x on residues. A class that is mostly one temperature
 cannot carry information about the range above it. The edge at 38 takes the
 mode out of that class, and that is the whole of its effect.
 
@@ -1447,9 +1459,9 @@ arithmetic from a label table rather than a new measurement.
 
 | corpus | modal mass | mass above mode | mode/tail | granularity rho |
 |---|---|---|---|---|
-| `pretrain` | 28.9% (30 C) | 60.8% | 0.47x | **+1.000** |
-| `external_balanced` | 14.7% (37 C) | 52.6% | 0.28x | **+1.000** |
-| `external` | 26.4% (37 C) | 10.8% | **2.46x** | **+0.200** |
+| `pretrain` | 29.64% (30 C) | 59.55% | 0.50x | **+1.000** |
+| `external_balanced` | 15.53% (37 C) | 49.85% | 0.31x | **+1.000** |
+| `external` | 27.24% (37 C) | 9.93% | **2.74x** | **+0.200** |
 
 Where the tail outweighs the mode, no partition's top class contained the mode
 at all, there was nothing for a cut to fix, and the bound ranked granularity
@@ -1498,7 +1510,7 @@ everywhere, here is the most contaminated top class each corpus admits:
 |---|---|---|---|
 | `pretrain` | `[85, inf)` | 6.0% | 43.8% |
 | `external_balanced` | `[95, inf)` | 6.0% | 38.2% |
-| `external` | `[37, inf)` | **37.2%** | **71.1%** |
+| `external` | `[37, inf)` | **37.2%** | **73.3%** |
 
 On `pretrain` the only temperatures whose own mass exceeds the mass above them
 are 98 and 99 degrees C, holding 0.8% and 0.3% of the corpus -- far below the
@@ -1592,6 +1604,114 @@ z < 3. (ii) Either run whose rarest class holds under 5% of residues -- 9.93%
 and 9.24% here, recorded so it can be checked. As in 5.2f, 5.2g and 5.2h, a
 Gate 2 failure on the **size** criterion does not void this test, both
 outcomes being differences between runs rather than ratios to a bound.
+
+#### Outcome: it is the function, not the temperature -- on test, and not on validation
+
+Both runs landed 2026-11-15. Numbers in
+`results/topedge_20261114/measured.md`; reports in that directory's `runs/`.
+
+| run | k | bound | val gain | test gain | gain/bound (test) |
+|---|---|---|---|---|---|
+| `gext_k6` (reference) | 6 | +0.2566% | +0.100% | +0.062% | 0.24x |
+| `gmod_e38` | 6 | +0.2837% | +0.122% | **+0.162%** | 0.57x |
+| `gmod_e45` | 6 | +0.2853% | +0.120% | **+0.165%** | 0.58x |
+
+**The primary outcome is met on test and not on validation.** Moving a single
+edge from 37 to 38 degrees C, with class count held at six, is worth
+**+0.100 pp at 8.6 sigma** on test -- above the +0.09 pp fixed in advance, and
+75% of the entire +0.133 pp that 5.2h attributed to the same cut when it added
+a seventh class. On validation the same difference is +0.022 pp at 1.6 sigma,
+which is within noise. We fixed the primary outcome on test before launch and
+it is met there; the disagreement is reported in the next subsection rather
+than left to the appendix.
+
+**The secondary outcome is met on both of its terms.** `gmod_e45` differs from
+`gmod_e38` by **+0.003 pp, 0.2 sigma**, while exceeding `gext_k6` by +0.103 pp.
+Seven degrees of edge placement -- most of the distance from the modal pile to
+the conventional mesophile-thermophile boundary -- changes the measured gain by
+three thousandths of a percentage point.
+
+As pre-registered, we state what that licenses and no more. Two runs agreeing
+within noise is not equivalence. The claim is the negative one: **we found no
+evidence that the specific value 38 degrees C matters**, which is exactly the
+claim 5.2h said it could not make, because both of its runs used that edge.
+The positive account -- the gain comes from removing the modal temperature
+from the top class -- now rests on a test rather than on a coincidence of edge
+values.
+
+None of the three refutations named in advance occurred. In particular
+`gmod_e38` did not land within noise of `gext_k6`, so **5.2h is not overturned
+and 6.2's restructuring stands.** And 5.2h's own stated limitation is
+discharged: its gain was not the seventh class, because with k held at six,
+moving one edge recovers three quarters of it.
+
+This is the first pre-registered test in the project where a primary and a
+secondary prediction both held. It is also the fifth of six where something we
+wrote down in advance turned out differently than expected -- here, that the
+measurement would be clean on both splits.
+
+#### The split disagreement, which is now this corpus's signature
+
+| run | top class | modal fraction of top class | val gain | test gain |
+|---|---|---|---|---|
+| `gext_k2` | `[35, inf)` | 55.2% | +0.069% | +0.072% |
+| `gext_k4` | `[37, inf)` | 73.3% | +0.106% | +0.070% |
+| `gext_k6` | `[37, inf)` | 73.3% | +0.100% | +0.062% |
+| `gext_k9` | `[38, inf)` | 7.4% | +0.119% | +0.191% |
+| `gplc_nest` | `[38, inf)` | 7.4% | +0.144% | +0.195% |
+| `gplc_match` | `[38, inf)` | 7.4% | +0.124% | +0.157% |
+| `gmod_e38` | `[38, inf)` | 7.4% | +0.122% | +0.162% |
+| `gmod_e45` | `[45, inf)` | 8.0% | +0.120% | +0.165% |
+
+**On test, eight runs on this corpus separate into two groups with a 0.085 pp
+gap and nothing inside it.** Every run whose top class is free of the modal
+temperature measures +0.157% or above; every run whose top class is dominated
+by it measures +0.072% or below. Class count ranges from 2 to 9 within each
+group and does not order them. That is the cleanest statement of 5.2h's
+mechanism anywhere in this paper, and it required none of the statistics --
+it is visible in the column.
+
+**On validation the two groups overlap.** `gext_k4`, whose top class is 73.3%
+one recorded temperature, measures +0.106%, above `gext_k6`'s +0.100% and
+within two standard deviations of `gmod_e45`'s +0.120%. Validation spans a
+factor of 2.1 across the eight runs where test spans 3.1.
+
+We do not know why, and we decline to construct a reason. What we record:
+
+- **It is the second time.** 5.2g's rank correlation was +0.800 on validation
+  against +0.200 on test. This corpus has now disagreed between splits twice,
+  and neither designed corpus has done so once.
+- **Test is what we quote**, as in 5.2e and 5.2g: it is held out, it is
+  cluster-disjoint from train, and the validation split is what selected the
+  checkpoint being scored. A split that chose the checkpoint is the wrong
+  place to read an effect size off.
+- **The sign structure replicates across splits and the margins do not.** Both
+  splits put `gmod_e38` above `gext_k6` and both put the two new runs within
+  noise of each other. What differs is only whether the margin clears noise.
+
+So the accurate one-line summary of 5.2i is: **positive on both splits, large
+and unambiguous on test, within noise on validation.** A reader who trusts
+only validation should take 5.2i as uninformative and 5.2h -- whose primary
+comparison was 9.8 sigma on test and significant on validation too -- as the
+load-bearing result.
+
+#### A correction to our own numbers
+
+The mode/tail diagnostic in 5.1b, and the modal fractions in the table above,
+were first computed on sequence counts. Every other quantity in this paper --
+the 5% floor, the minimum class share, the bound itself -- is computed on
+residues. Recomputed on residues:
+
+| corpus | mode | mode's share | share above the mode | mode/tail |
+|---|---|---|---|---|
+| `pretrain` | 30 C | 29.64% | 59.55% | **0.50x** (was 0.47x) |
+| `external_balanced` | 37 C | 15.53% | 49.85% | **0.31x** (was 0.28x) |
+| `external` | 37 C | 27.24% | 9.93% | **2.74x** (was 2.46x) |
+
+Same ordering, same side of 1.0 in every case, so the diagnostic's
+retrodiction of all three corpora is unaffected. `[37, inf)`'s modal fraction
+likewise moves from 71.1% to **73.3%**: the earlier figure divided two rounded
+corpus shares. The residue figures are the ones this paper quotes from here on.
 
 ### 5.3 Sampling design is half the measurement
 
@@ -1730,19 +1850,43 @@ So on this corpus **which cuts a partition contains dominates how many it
 contains, and the bound sees neither.** The decomposition is an interaction:
 without a cut above the pile, refinement from two classes to six buys nothing
 measurable; with it, four classes to seven buys +0.038 pp and then saturates.
-Ranked by measured gain, all three cut-bearing partitions sit above all three
-without, regardless of k.
+
+Section 5.2i then separated the function from the edge value, which 5.2h could
+not do because both of its runs used the edge 38. Holding class count at six
+and *moving* `gext_k6`'s top edge rather than adding one, a cut at 38 is worth
++0.100 pp at 8.6 sigma and a cut at 45 is worth +0.103 pp -- the two agreeing
+to 0.2 sigma across seven degrees of placement. So the mechanism is the
+function, removing the modal temperature from the top class, and **we found no
+evidence that the particular value matters**; 5.2i records that this licenses
+the negative claim and not equivalence.
+
+The cleanest form of the whole result needs no statistics at all. Ranked by
+measured test gain, the eight runs on this corpus split into two groups with a
+0.085 pp gap and nothing inside it: every partition whose top class is free of
+the modal temperature measures +0.157% or above, every partition whose top
+class is dominated by it measures +0.072% or below, and k ranges from 2 to 9
+*within* each group without ordering it.
+
+That cleanliness is on test. On validation the two groups overlap, and 5.2i
+reports the disagreement at length: this corpus has now split between its two
+splits twice, in 5.2g and again here, while neither designed corpus has done
+so once. We quote test throughout -- it is held out, and validation is what
+selected the checkpoint being scored -- and a reader who weights validation
+instead should treat 5.2h, significant on both splits, as the load-bearing
+member of the pair.
 
 That makes "resolution yes, placement no" a description of the two corpora we
 balanced rather than a property of the statistic. The condition that separates
 them is computable from a label table in seconds: compare the modal
 temperature's mass to the mass above it. On `pretrain` and `external_balanced`
-the tail outweighs the mode (0.47x and 0.28x) and no partition's top class
-contained the mode at all, so there was nothing for a cut to fix and the bound
-ranked granularity perfectly; on `external` the mode outweighs the tail
-(2.46x) and the ranking failed. Three for three -- but fitted to three corpora
-after the fact, so section 5.2h states it as a hypothesis with a named test
-rather than as a result.
+the tail outweighs the mode (0.50x and 0.31x on residues) and no partition's
+top class contained the mode at all, so there was nothing for a cut to fix and
+the bound ranked granularity perfectly; on `external` the mode outweighs the
+tail (2.74x) and the ranking failed. Three for three -- but fitted to three
+corpora after the fact, and 5.2i establishes that the condition is *realizable*
+on only one of the three, so it cannot be falsified by transfer within this
+paper. It stays a hypothesis with a named test on a fourth corpus, listed in
+section 8 as data collection rather than claimed here.
 
 What the bound does *not* tell you, on any corpus, is how far to go. The
 primary corpus saturates by four classes, the design-matched one has not
@@ -1977,11 +2121,35 @@ the whole measured difference between two classes and nine, with a four-class
 partition containing it beating a six-class one at a matched bound. The bound
 gave no sign that that cut was the important one, and neither did the class
 count. The cheap check is one ratio from the label table -- the modal
-temperature's mass against the mass above it -- which is 0.47x and 0.28x on
-the two corpora where the bound ranked granularity perfectly and 2.46x on the
-one where it failed. If the mode is the larger, cut immediately above it
-first. That diagnostic is fitted to three corpora after the fact, so we offer
-it as a check worth running rather than a rule we have validated.
+temperature's mass against the mass above it -- which is 0.50x and 0.31x on
+the two corpora where the bound ranked granularity perfectly and 2.74x on the
+one where it failed. If the mode is the larger, cut above it first; section
+5.2i found no evidence that exactly where above matters, 38 and 45 degrees C
+agreeing to 0.2 sigma with class count held at six.
+
+That diagnostic is fitted to three corpora after the fact, and 5.2i establishes
+something sharper about why we cannot do better: under this paper's own 5%
+floor, the condition it describes is *realizable* on only one of our three
+corpora. The most mode-dominated top class `pretrain` admits is 43.8% modal,
+and `external_balanced` 38.2%, against `external`'s 73.3%. That the two
+corpora which ranked granularity perfectly had no way to express the failure
+mode is evidence the diagnostic is structural rather than coincidental, and it
+also means **the diagnostic cannot be falsified by transfer within this
+paper.** We offer it as a check worth running, not a rule we have validated,
+and section 8 lists the fourth corpus that would validate it as data
+collection rather than claiming it.
+
+**One limitation belongs to the corpus rather than to the measure, and we
+state it where a reader will find it.** On the uncapped corpus the two splits
+disagree, twice: 5.2g's rank correlation was +0.800 on validation against
++0.200 on test, and 5.2i's primary difference is 8.6 sigma on test against 1.6
+on validation. Neither species-balanced corpus has disagreed once. We quote
+test throughout -- it is held out, cluster-disjoint from train, and the
+validation split is what selected the checkpoint being scored -- and in both
+cases the sign structure replicates across splits while the margins do not.
+A reader who weights validation instead should read 5.2i as uninformative and
+5.2h, significant on both splits, as the load-bearing member of that pair. We
+do not know the cause and have not invented one.
 
 **Do not use this statistic to choose the threshold -- only to choose the
 number of classes.** We set out to supply a denominator and we would have
@@ -2143,10 +2311,11 @@ remains:
 - **Nothing in the results is pending.** Figures regenerate from committed
   files via `scripts/17_figures.py`.
 
-Spend: roughly $97 of A10 time against the $31 originally estimated, over
-thirty-one runs. The overrun is the five pre-registered tests that were not in
+Spend: roughly $104 of A10 time against the $31 originally estimated, over
+thirty-three runs. The overrun is the six pre-registered tests that were not in
 the original plan: 5.2d, 5.2e, 5.2f replicating the second, 5.2g putting it on
-the corpus we did not build, and 5.2h explaining why it failed there.
+the corpus we did not build, 5.2h explaining why it failed there, and 5.2i
+isolating the mechanism from the edge value.
 
 **Landed 2026-11-10:** the granularity series on the uncapped third corpus,
 section 5.2g. The primary outcome replicated at 9.4 sigma and the rank
@@ -2159,15 +2328,20 @@ pre-registered outcomes met on both splits, at 9.8 and 6.9 sigma on test. The
 paper's weakest paragraph is now a measured mechanism and section 6.2 has its
 first positive placement result.
 
-**Launched 2026-11-14 and pending:** section 5.2i, two runs separating the
-cut's function from the value 38 degrees C, with the top edge moved rather
-than added so that class count is held at six.
+**Landed 2026-11-15:** section 5.2i, two runs separating the cut's function
+from the value 38 degrees C with class count held at six. Both pre-registered
+outcomes met on test -- +0.100 pp at 8.6 sigma for moving the edge, and the 38
+and 45 variants agreeing to 0.2 sigma -- and neither clearing two sigma on
+validation. The split disagreement is written up in 5.2i and 6.2 rather than
+set aside; it is the second time this corpus has produced one and no other
+corpus in the project has produced any. The first test here where both a
+primary and a secondary prediction held.
 
 **The transfer test proposed here on 2026-11-14 was retired before launch, and
 section 5.2i explains why.** Contaminating `pretrain`'s top class is not
 possible under this paper's 5% floor: the most contaminated top class that
 corpus admits is 43.8% modal and holds 6.0% of the corpus, against
-`external`'s 71.1% in a class holding 37.2%, and `external_balanced` tops out
+`external`'s 73.3% in a class holding 37.2%, and `external_balanced` tops out
 at 38.2%. The condition the diagnostic describes is only realizable on one of
 our three corpora. That is evidence the diagnostic is structural rather than
 coincidental -- the two corpora that ranked granularity perfectly had no way

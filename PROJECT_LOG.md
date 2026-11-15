@@ -2470,3 +2470,75 @@ three-step cut plan is recorded in its header; the merge of 4.2/4.4/4.5 into
 one subsection is the first item. THIS IS THE MAIN OUTSTANDING TASK.
 
 Spend: ~$6.5 this batch, ~$97 over thirty-one runs.
+
+## 2026-11-15 -- the top-edge test (5.2i): both predictions met on test, neither on validation
+
+Two runs on `external`, pre-registered at `7cd763f` and launched at `091f8dc`.
+Both **move** gext_k6's top edge instead of adding one, so class count is held
+at six -- tighter than 5.2h, where gplc_nest added a seventh class. Reports and
+write-up in `results/topedge_20261114/`.
+
+| run | edges (C) | bound | val gain | test gain |
+|---|---|---|---|---|
+| gext_k6 (ref) | 27,29,31,35,37 | +0.2566% | +0.100% | +0.062% |
+| gmod_e38 | 27,29,31,35,**38** | +0.2837% | +0.122% | **+0.162%** |
+| gmod_e45 | 27,29,31,35,**45** | +0.2853% | +0.120% | **+0.165%** |
+
+**Primary (fixed on test in advance): MET.** gmod_e38 - gext_k6 = +0.100 pp at
+8.6 sigma, above the +0.09 pp named before launch, and 75% of 5.2h's +0.133 pp
+for adding the same edge. On validation it is +0.022 pp at 1.6 sigma -- within
+noise.
+
+**Secondary: MET on both terms.** gmod_e45 - gmod_e38 = +0.003 pp, 0.2 sigma,
+with both exceeding gext_k6 by +0.100 and +0.103 pp. Seven degrees of edge
+placement changes the gain by three thousandths of a point. Per the
+pre-registration this licenses only the negative claim that **the value 38 does
+not matter** -- not equivalence. First test in the project where a primary and
+a secondary prediction both held.
+
+None of the three pre-registered refutations occurred, so 5.2h stands and 6.2's
+restructuring is not undone. 5.2h's stated limitation is discharged: its gain
+was not the seventh class.
+
+**The clean form needs no statistics.** On test the eight runs on this corpus
+split into two groups with a 0.085 pp gap and nothing inside: top class free of
+the mode -> +0.157% or above; top class dominated by it -> +0.072% or below; k
+runs 2 to 9 inside each group without ordering it.
+
+**The split disagreement is now this corpus's signature and is written up, not
+buried.** 5.2g was +0.800 val / +0.200 test; 5.2i is 1.6 sigma val / 8.6 test.
+Neither balanced corpus has disagreed once. We quote test (held out,
+cluster-disjoint, and validation selected the checkpoint being scored), note
+that the sign structure replicates across splits while the margins do not, and
+say that a validation-weighting reader should treat 5.2h as the load-bearing
+member of the pair. Cause unknown and not invented.
+
+**CORRECTION made in our own voice.** The mode/tail diagnostic and the
+top-class modal fractions were computed on sequence counts; everything else in
+the paper (the 5% floor, min class share, the bound) is on residues. On
+residues: pretrain 0.50x, external_balanced 0.31x, external 2.74x (was 0.47x /
+0.28x / 2.46x), and [37,inf) is 73.3% modal rather than 71.1% -- the old figure
+divided two rounded corpus shares. Same ordering, same side of 1.0, 3/3
+retrodiction unaffected. Propagated to 5.1b, 5.2g, 5.2h, 5.2i, 6.2, section 8
+and the workshop.
+
+**The transfer test proposed in 5.2h was retired before launch**, and the
+reason is itself in the paper: under the 5% floor the most mode-dominated top
+class pretrain admits is 43.8% modal and external_balanced 38.2%, against
+external's 73.3%. The diagnostic's condition is realizable on one of our three
+corpora only -- evidence it is structural, and also proof it cannot be
+falsified by transfer within this paper. A fourth, mode-dominated corpus is
+listed in section 8 as data collection, not claimed.
+
+Paper changes: 5.2i outcome + split-disagreement + correction subsections; 6.2
+gains the function/value separation, the two-group gap and the split caveat and
+drops its "not separated" caution; 5.1b corrected and "immediately above"
+relaxed to "above"; section 8 gains the realizability argument and the split
+disagreement as a corpus-level limitation; abstract to thirty-three runs, five
+pre-registered tests, ~$104. Draft ~23,700 words.
+
+Workshop updated in place (4.6, recommendation 4, limitations) and NOT cut --
+the cut is the author's, per instruction; the three-step plan stays in its
+header.
+
+Spend: ~$6.5 this batch, ~$104 over thirty-three runs.
