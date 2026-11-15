@@ -1476,6 +1476,123 @@ backbone for the mechanism itself.
 
 Full analysis: `results/placement_20261114/measured.md`.
 
+### 5.2i The function or the temperature? Pre-registered 2026-11-14
+
+**Written before these two runs were launched.** Call ids in
+`results/topedge_20261114/runs.txt`; the commit carrying this section
+immediately precedes the launch commit.
+
+#### First, the test we said we would run cannot be run, and that is a finding
+
+Section 5.2h proposed validating the mode/tail diagnostic by transfer:
+re-running part of the `pretrain` granularity series with a deliberately
+mode-contaminated top class, predicting that its perfect rank correlation
+breaks. **That experiment is not available**, and checking why was worth more
+than running it would have been.
+
+The diagnostic's condition is a top class that is mostly one recorded
+temperature. Subject to the 5%-of-residues floor this paper imposes
+everywhere, here is the most contaminated top class each corpus admits:
+
+| corpus | most contaminated top class reachable | share of corpus | modal fraction |
+|---|---|---|---|
+| `pretrain` | `[85, inf)` | 6.0% | 43.8% |
+| `external_balanced` | `[95, inf)` | 6.0% | 38.2% |
+| `external` | `[37, inf)` | **37.2%** | **71.1%** |
+
+On `pretrain` the only temperatures whose own mass exceeds the mass above them
+are 98 and 99 degrees C, holding 0.8% and 0.3% of the corpus -- far below the
+floor. At its two large spikes, 30 and 37 degrees C, a top class starting
+there is only 32% and 31% modal. **The condition the diagnostic describes is
+not realizable on either corpus we balanced.**
+
+This cuts both ways and we report both.
+
+- It is *evidence the diagnostic is structural rather than a coincidence*. The
+  reason `pretrain` and `external_balanced` ranked granularity perfectly is
+  not that they got lucky; it is that no partition of either corpus can put a
+  swamped class at the top, so the failure mode had no way to occur. The
+  mechanism and the ranking outcome are not independent facts about three
+  corpora.
+- It also means **the diagnostic cannot be falsified by transfer within this
+  paper.** A hypothesis that only one of our three corpora can express is not
+  one these three corpora can test. Validating it needs a fourth corpus
+  selected for being mode-dominated, which is data collection and not GPU
+  time, and section 8 lists it as such rather than claiming it.
+
+So instead of a weak transfer test we run the strongest test the available
+corpus supports, and it addresses a limitation section 5.2h flagged
+explicitly.
+
+#### The test: is it the function, or is it 38 degrees C?
+
+Section 5.2h's two runs both used the edge 38, so we wrote that we could not
+separate "a cut isolating the upper tail" from "a cut at 38 degrees C", and
+named the function rather than the temperature. These two runs separate them,
+and they also tighten 5.2h's primary comparison.
+
+| run | k | edges (C) | bound | top class | modal fraction |
+|---|---|---|---|---|---|
+| `gmod_e38` | 6 | 27,29,31,35,**38** | +0.2837% | `[38, inf)` | **0.0%** |
+| `gmod_e45` | 6 | 27,29,31,35,**45** | +0.2853% | `[45, inf)` | **0.0%** |
+
+Both are `gext_k6`'s partition -- 27,29,31,35,37, bound +0.2566%, measured
++0.062% on test -- with the **top edge moved**, not added. Class count is
+identical at six, four of the five edges are unchanged, and `gmod_e38` differs
+from `gext_k6` by moving one edge by a single degree. That is tighter than
+5.2h's primary comparison, where `gplc_nest` added a seventh class, and it
+removes the last reading on which that result could be attributed to class
+count.
+
+The two new runs' bounds agree to 0.0016 pp, which is the same accident that
+made 5.2h's matched-bound comparison possible, and their top classes are both
+entirely free of the modal temperature.
+
+**Primary outcome, fixed now: the sign of (`gmod_e38` test gain) - (`gext_k6`
+test gain).** One edge moved from 37 to 38, class count held at six.
+
+*The prediction on record is positive beyond two standard deviations, and
+comparable to the +0.133 pp that 5.2h measured for adding the same edge* --
+call it above +0.09 pp, two thirds of that figure, since one fewer class is
+available here than in `gplc_nest`.
+
+**Secondary, and it is what separates function from temperature: `gmod_e45`
+against `gmod_e38`.** *The prediction on record is that these two agree within
+two standard deviations of each other, while both exceed `gext_k6` by more
+than +0.09 pp.* If the mechanism is the removal of the modal temperature from
+the top class, then any edge above 37 that achieves it should do equally well,
+and 38 against 45 spans seven degrees and three quarters of the conventional
+mesophile-thermophile boundary.
+
+We note what an agreement here can and cannot show. Two runs agreeing within
+noise is not equivalence and we will not call it that; what it licenses is the
+negative statement that **we found no evidence the specific value 38 matters**,
+which is exactly the claim 5.2h said it could not make.
+
+**What would refute this.**
+
+- **`gmod_e38` within noise of `gext_k6`.** This would overturn 5.2h: the gain
+  there would have come from the seventh class after all, not from the cut,
+  and 6.2's restructuring would have to be undone. We regard this as unlikely
+  given 5.2h's 7.7 sigma class-count-matched comparison, and say so in advance
+  so that the prediction is not costless.
+- **`gmod_e45` differing from `gmod_e38` by more than two standard
+  deviations.** Then the edge's value matters beyond its function, the
+  "remove the mode from the top class" account is incomplete, and the honest
+  description reverts to 5.2h's -- a cut at 38 helps, for reasons not isolated.
+  Section 6.2's mechanism paragraph would be narrowed back to the single edge.
+- **`gmod_e45` within noise of `gext_k6` while `gmod_e38` beats it.** The least
+  expected outcome and the most interesting: it would mean the gain needs a
+  cut *immediately* above the pile rather than anywhere above it, which is a
+  sharper and more surprising claim than the one under test. We would report
+  it as such and not fold it into the existing account.
+
+**Void conditions.** (i) Either run failing Gate 2's significance criterion,
+z < 3. (ii) Either run whose rarest class holds under 5% of residues -- 9.93%
+and 9.24% here, recorded so it can be checked. As in 5.2f, 5.2g and 5.2h, a
+Gate 2 failure on the **size** criterion does not void this test, both
+outcomes being differences between runs rather than ratios to a bound.
+
 ### 5.3 Sampling design is half the measurement
 
 The uncapped, unbalanced external corpus peaks at 35 degrees C instead, and
@@ -2042,21 +2159,33 @@ pre-registered outcomes met on both splits, at 9.8 and 6.9 sigma on test. The
 paper's weakest paragraph is now a measured mechanism and section 6.2 has its
 first positive placement result.
 
+**Launched 2026-11-14 and pending:** section 5.2i, two runs separating the
+cut's function from the value 38 degrees C, with the top edge moved rather
+than added so that class count is held at six.
+
+**The transfer test proposed here on 2026-11-14 was retired before launch, and
+section 5.2i explains why.** Contaminating `pretrain`'s top class is not
+possible under this paper's 5% floor: the most contaminated top class that
+corpus admits is 43.8% modal and holds 6.0% of the corpus, against
+`external`'s 71.1% in a class holding 37.2%, and `external_balanced` tops out
+at 38.2%. The condition the diagnostic describes is only realizable on one of
+our three corpora. That is evidence the diagnostic is structural rather than
+coincidental -- the two corpora that ranked granularity perfectly had no way
+to express the failure mode -- and it also means the diagnostic cannot be
+falsified by transfer within this paper.
+
 Still available and not run, in the order we would run them:
 
-1. **The mode/tail diagnostic, tested rather than fitted.** Re-run two or
-   three points of the `pretrain` granularity series with a deliberately
-   mode-contaminated top class, predicting that its perfect rank correlation
-   breaks. Roughly $7-10, and it converts the diagnostic from a pattern across
-   three corpora into a pre-registered result. This is the best value left.
-2. **Whether 38 degrees C is doing anything beyond isolating the tail.** Both
-   5.2h runs share that edge, so the function and the temperature are not
-   separated. One run at a different tail-isolating edge, say 40 or 42, would
-   do it, roughly $3.50.
+1. **A fourth corpus selected in advance for being mode-dominated**, to test
+   the diagnostic rather than fit it. This is the one experiment that would
+   turn 5.2h's diagnostic into a result, and it is data collection rather than
+   GPU time: the requirement is a growth-temperature table whose modal value
+   outweighs everything above it.
+2. **A second architecture family**, to turn 5.2c from a capacity comparison
+   into an architecture-independence result.
 3. **A corpus with growth-temperature measurement independent of the
-   culture-collection catalogues**, and **a second architecture family** to
-   turn 5.2c into an architecture-independence result. Both are new data
-   collection, not GPU time.
+   culture-collection catalogues** that Gosha and Engqvist both scrape. This
+   is the confound no number of corpora buys out.
 
 Future work, flagged and not claimed: a corpus with a growth-temperature
 measurement independent of the culture-collection catalogues that Gosha and
