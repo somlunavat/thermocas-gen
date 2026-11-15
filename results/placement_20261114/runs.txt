@@ -1,0 +1,59 @@
+Matched-bound placement test, launched 2026-11-14, pre-registered in
+paper/draft.md section 5.2h (commit da4b6a2, immediately before these
+launches).
+
+Corpus: external (uncapped, unbalanced), identical to the 2026-11-10 batch --
+byte-identical sequences, clusters and splits. Primary backbone, stage A,
+3,000 steps, A10G, Gate 2 on 2,000 validation sequences, five shuffles. These
+two runs differ from gext_k2/k4/k6/k9 only in --bin-edges.
+
+WHAT THIS TESTS. Section 5.2g's rank correlation failed and the explanation
+offered for it was post-hoc: that k=9 paid because it was the first partition
+to cut at 38 C, separating the 18,922 sequences above 38 from the Swiss-Prot
+37 C pile, rather than because it was more refined. These two runs test that
+account.
+
+run         edges                 k  bound      min mass  min seqs  call id
+gplc_nest   27,29,31,35,37,38     7  +0.3154%   9.93%     18,012    fc-01M7EGJMZY48GBSF8KHGWMB3BT
+gplc_match  30,37,38              4  +0.2550%   9.93%     19,702    fc-01M7EGJZJ7G24YSJDF7ZRPM9C9
+
+gplc_nest is gext_k6's partition (27,29,31,35,37) with one edge added at 38
+and nothing else changed -- a strict refinement, so exactly one variable
+moves. gplc_match carries gext_k6's bound (+0.2566%) to within 0.0016 pp
+using four classes instead of six, and is the matched-bound test proper.
+
+REFERENCE FIGURES, same corpus, same splits, same 2,000-sequence test cap,
+from results/granularity_20261110/:
+  gext_k4   edges 29,32,37              bound +0.2036%   test +0.070%
+  gext_k6   edges 27,29,31,35,37        bound +0.2566%   test +0.062%
+  gext_k9   edges 26,...,35,37,38       bound +0.3377%   test +0.191%
+
+PREDICTIONS BY EXPLANATION, from 5.2h. The reason for two runs is that the two
+low-k explanations are indistinguishable on gplc_nest alone.
+
+  explanation      gplc_nest (k=7)        gplc_match (k=4)
+  the 38 C cut     near +0.19%            near +0.19% on four classes
+  class count      between +0.06 and .19  near gext_k4's +0.07%
+  the bound        near +0.19%            near gext_k6's +0.06%
+
+gplc_match is the discriminating run. Class count and the bound predict nearly
+the same figure for it (+0.07% against +0.06%) and this design cannot separate
+those two.
+
+Primary outcome, fixed before launch: sign of (gplc_nest test gain) minus
+(gext_k6's +0.062%), predicted positive beyond two standard deviations and
+recovering more than half of the +0.129 pp that k=6 to k=9 bought, so at least
++0.065 pp. Secondary and discriminating: sign of (gplc_match test gain) minus
+gext_k6's, predicted positive beyond two standard deviations.
+
+Void conditions: z < 3 on either run, or a rarest class under 5% of residues
+(both are 9.93% by construction). A Gate 2 SIZE failure does not void this
+test -- both outcomes are differences between runs, not ratios to a bound, and
+three of 5.2g's four runs failed on size.
+
+Reports land at checkpoints/stage_a/<run>/{gate2,test}_report.txt on volume
+thermocas-gen-vol. Test is scored at the validation-selected checkpoint and
+capped at --gate2-limit, so 2,000 of 11,263 -- the cap will bind, as it did on
+the 5.2g batch.
+
+PENDING. Nothing is written below this line until both land.
