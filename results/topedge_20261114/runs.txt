@@ -1,0 +1,59 @@
+Top-edge test: function or temperature? Launched 2026-11-14, pre-registered in
+paper/draft.md section 5.2i (commit 7cd763f, immediately before these
+launches).
+
+Corpus: external (uncapped, unbalanced), identical to the 2026-11-10 and
+2026-11-14 batches -- byte-identical sequences, clusters and splits. Primary
+backbone, stage A, 3,000 steps, A10G, Gate 2 on 2,000 validation sequences,
+five shuffles.
+
+WHY THESE TWO. Section 5.2h established that a cut above the 37 C pile is
+worth 7 to 10 sigma, but both of its runs used the edge 38, so the function
+(remove the modal temperature from the top class) was not separated from the
+value 38. These two runs separate them. They also tighten 5.2h's primary
+comparison: gplc_nest ADDED a seventh class, whereas these MOVE gext_k6's top
+edge and hold class count at six.
+
+run       edges              k  bound      min mass  top class    modal frac  call id
+gmod_e38  27,29,31,35,38     6  +0.2837%   9.93%     [38,inf)     0.0%        fc-01M7EVHVAZT62TB4DTBPR57YWH
+gmod_e45  27,29,31,35,45     6  +0.2853%   9.24%     [45,inf)     0.0%        fc-01M7EVHZ7YC29NWGYXZVHSCQ98
+
+Both are gext_k6's partition (27,29,31,35,37) with the top edge moved. Four of
+five edges unchanged; gmod_e38 differs from gext_k6 by one degree on one edge.
+The two new bounds agree to 0.0016 pp.
+
+REFERENCE, same corpus, same splits, same 2,000-of-11,263 test cap:
+  gext_k6     27,29,31,35,37         k=6  bound +0.2566%  test +0.062%  top class 71.1% modal
+  gplc_nest   27,29,31,35,37,38      k=7  bound +0.3154%  test +0.195%  top class  0.0% modal
+  gplc_match  30,37,38               k=4  bound +0.2550%  test +0.157%  top class  0.0% modal
+  gext_k9     26,28,29,30,31,35,37,38 k=9 bound +0.3377%  test +0.191%  top class  0.0% modal
+
+PREDICTIONS, fixed before launch.
+  primary    sign of (gmod_e38 - gext_k6) on test: positive beyond two
+             standard deviations and above +0.09 pp, two thirds of the
+             +0.133 pp that 5.2h measured for adding the same edge, since one
+             fewer class is available here than in gplc_nest.
+  secondary  gmod_e45 agrees with gmod_e38 within two standard deviations
+             while both exceed gext_k6 by more than +0.09 pp. Agreement
+             within noise is NOT equivalence and will not be called that; it
+             licenses only the negative statement that we found no evidence
+             the specific value 38 matters.
+
+THE TRANSFER TEST WE RETIRED. 5.2h proposed contaminating pretrain's top class
+instead. It is not possible under the 5% floor: the most contaminated top
+class pretrain admits is 43.8% modal holding 6.0% of the corpus, and
+external_balanced tops out at 38.2%, against external's 71.1% in a class
+holding 37.2%. On pretrain the only temperatures whose own mass exceeds the
+mass above them are 98 and 99 C, at 0.8% and 0.3%. Recorded in 5.2i as a
+finding in its own right: the diagnostic's condition is realizable on one of
+our three corpora only, which is evidence it is structural and also means it
+cannot be falsified by transfer within this paper.
+
+Void conditions: z < 3 on either run, or a rarest class under 5% of residues
+(9.93% and 9.24% here). A Gate 2 SIZE failure does not void this test; both
+outcomes are differences between runs.
+
+Reports land at checkpoints/stage_a/<run>/{gate2,test}_report.txt on volume
+thermocas-gen-vol.
+
+PENDING. Nothing is written below this line until both land.
